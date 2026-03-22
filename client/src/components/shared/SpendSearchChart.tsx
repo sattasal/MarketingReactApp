@@ -174,7 +174,7 @@ export default function SpendSearchChart() {
 
   const [showOrganic, setShowOrganic] = useState(true);
   const [showBrand,   setShowBrand]   = useState(true);
-  const [delay, setDelay] = useState(0); // 0 = nessun delay, 1 = 1 sett., 2 = 2 sett.
+  const [delay,       setDelay]       = useState(0); // 0=nessuno, 1=1 sett., 2=2 sett.
   const [excludedTip, setExcludedTip] = useState<Set<string>>(new Set());
 
   const toggleTipologia = (tip: string) => {
@@ -247,20 +247,18 @@ export default function SpendSearchChart() {
             Spesa settimanale vs click organici e brand · ultime {WEEKS} settimane
           </p>
         </div>
-		<div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
-		  {[{ val: 0, label: "Nessun delay" }, { val: 1, label: "Delay 1 sett." }, { val: 2, label: "Delay 2 sett." }].map(({ val, label }) => (
-			<button key={val} onClick={() => setDelay(val)} className="btn" style={{
-			  padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-			  background: delay === val ? "#1e293b" : "transparent",
-			  color:      delay === val ? "#fff"    : "#64748b",
-			  boxShadow:  delay === val ? "0 1px 4px rgba(0,0,0,.1)" : "none",
-			}}>
-			  {val === 0 ? "⏱ " : ""}{label}
-			</button>
-		  ))}
-		</div>
-          ⏱ {delay ? "Delay 1 sett. attivo" : "Attiva delay 1 sett."}
-        </button>
+        <div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
+          {([{ val: 0, label: "Nessun delay" }, { val: 1, label: "⏱ 1 sett." }, { val: 2, label: "⏱ 2 sett." }] as { val: number; label: string }[]).map(({ val, label }) => (
+            <button key={val} onClick={() => setDelay(val)} className="btn" style={{
+              padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+              background: delay === val ? "#1e293b" : "transparent",
+              color:      delay === val ? "#fff"    : "#64748b",
+              boxShadow:  delay === val ? "0 1px 4px rgba(0,0,0,.1)" : "none",
+            }}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Controlli */}

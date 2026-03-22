@@ -2,7 +2,6 @@ export const MAX_FILE_SIZE = 500 * 1024;
 export const STORAGE_BUCKET = "creativita";
 export const TABLE = "marketing_entries";
 export const BUDGET_TABLE = "budget_records";
-export const STAGE_ID = "351b3bffc8e40e37cdb3109c3aa47aec0164456f55dd0a8c96c38cf07b833ece";
 export const today = new Date().toISOString().slice(0, 10);
 
 export const TIPOLOGIE = ["Radio", "OOH", "Stampa", "Digital Adv", "Evento", "Sponsor", "Partner", "Servizio", "Altro online", "Altro offline"];

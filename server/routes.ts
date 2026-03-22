@@ -340,6 +340,14 @@ export async function registerRoutes(
   });
 
   await seedDatabase();
+  // ── POST /api/verify-pin ──────────────────────────────────────────────────────
+// Verifica il PIN lato server leggendolo dai Secrets di Replit (APP_PIN)
+app.post("/api/verify-pin", (req, res) => {
+  const { pin } = req.body as { pin?: string };
+  if (!pin) return res.status(400).json({ ok: false });
+  const correct = process.env.APP_PIN ?? "";
+  res.json({ ok: pin === correct });
+});
   return httpServer;
 }
 

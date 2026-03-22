@@ -38,12 +38,16 @@ interface SpendEntry {
 
 // Lunedì della settimana di una data
 function getWeekStart(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
+  const d = new Date(dateStr + "T12:00:00"); // mezzogiorno evita problemi DST
+  const day = d.getDay(); // 0=domenica, 1=lunedì, ..., 6=sabato
+  const diff = day === 0 ? -6 : 1 - day; // se domenica torna a lunedì precedente
   const monday = new Date(d);
   monday.setDate(d.getDate() + diff);
-  return monday.toISOString().split("T")[0];
+  // Formatta in YYYY-MM-DD locale senza conversioni timezone
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const dd = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 // Genera tutte le date tra start e end (incluse)
@@ -168,13 +172,10 @@ export default function SpendSearchChart() {
     () => fetchSpending(WEEKS), []
   );
 
- // Aggrega spesa settimanale
+  // Aggrega spesa settimanale
   const spendMap = useMemo(() => {
     if (!spendData) return {};
-    const result = aggregateSpending(spendData as SpendEntry[], WEEKS);
-    console.log("spendData[0]:", (spendData as any)[0]);
-    console.log("spendMap:", result);
-    return result;
+    return aggregateSpending(spendData as SpendEntry[], WEEKS);
   }, [spendData]);
 
   // Costruisce il dataset per il grafico

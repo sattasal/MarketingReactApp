@@ -27,8 +27,8 @@ interface WeeklyGSC {
 }
 
 interface SpendEntry {
-  dataInizio: string;
-  dataFine: string;
+  data_inizio: string;
+  data_fine: string;
   spesa: number;
   tipologia: string;
   date_singole: string | null;
@@ -78,7 +78,7 @@ function aggregateSpending(entries: SpendEntry[], weeks: number): Record<string,
   const map: Record<string, number> = {};
 
   entries.forEach(entry => {
-    const { dataInizio, dataFine, spesa, tipologia, date_singole } = entry;
+    const { data_inizio, data_fine, spesa, tipologia, date_singole } = entry;
 
     // Stampa con date_singole → spesa intera nella settimana di ogni azione
     if (tipologia === "Stampa" && date_singole) {
@@ -94,7 +94,7 @@ function aggregateSpending(entries: SpendEntry[], weeks: number): Record<string,
     }
 
     // Tutti gli altri → distribuzione proporzionale sui giorni della campagna
-    const allDays = dateRange(dataInizio, dataFine);
+    const allDays = dateRange(data_inizio, data_fine);
     if (allDays.length === 0) return;
     const perDay = spesa / allDays.length;
 

@@ -8,23 +8,27 @@ import CreativitaPage from "./pages/CreativitaPage";
 import LeadContrattiPage from "./pages/LeadContrattiPage";
 import BudgetPage from "./pages/BudgetPage";
 import ReachPage from "./pages/ReachPage";
+import DashboardPage from "./pages/DashboardPage";
 import { PageType } from "./lib/types";
 
 export default function App() {
-  const validPages: PageType[] = ["marketing", "collettive", "piani-extra", "ooh", "timeline", "creativita", "lead-contratti", "budget", "reach"];
-  
+  const validPages: PageType[] = [
+    "marketing", "collettive", "piani-extra", "ooh", "timeline",
+    "creativita", "lead-contratti", "budget", "reach", "dashboard"
+  ];
+
   const getPageFromHash = (): PageType => {
     const h = window.location.hash.replace("#", "") as PageType;
     return validPages.includes(h) ? h : "marketing";
   };
-  
+
   const [page, setPage] = useState<PageType>(getPageFromHash());
   const [unlocked, setUnlocked] = useState(() => document.cookie.split("; ").some(c => c === "mc_auth=1"));
 
   const handleUnlock = (v: boolean) => {
     setUnlocked(v);
     if (v) {
-      document.cookie = "mc_auth=1; path=/; max-age=31536000; SameSite=Lax"; // 1 anno
+      document.cookie = "mc_auth=1; path=/; max-age=31536000; SameSite=Lax";
     } else {
       document.cookie = "mc_auth=; path=/; max-age=0";
     }
@@ -60,16 +64,17 @@ export default function App() {
         .eye-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px; opacity: .5; transition: opacity .15s; }
         .eye-btn:hover { opacity: 1; }
       `}</style>
-      
-      {page === "marketing" && <MarketingCostsPage {...pageProps} />}
-      {page === "collettive" && <CollettivePage {...pageProps} />}
-      {page === "piani-extra" && <PianiExtraPage {...pageProps} />}
-      {page === "ooh" && <OOHDetailPage {...pageProps} />}
-      {page === "timeline" && <TimelinePage {...pageProps} />}
-      {page === "creativita" && <CreativitaPage {...pageProps} />}
-      {page === "lead-contratti" && <LeadContrattiPage {...pageProps} />}
-      {page === "budget" && <BudgetPage {...pageProps} />}
-      {page === "reach" && <ReachPage {...pageProps} />}
+
+      {page === "marketing"      && <MarketingCostsPage {...pageProps} />}
+      {page === "collettive"     && <CollettivePage      {...pageProps} />}
+      {page === "piani-extra"    && <PianiExtraPage      {...pageProps} />}
+      {page === "ooh"            && <OOHDetailPage       {...pageProps} />}
+      {page === "timeline"       && <TimelinePage        {...pageProps} />}
+      {page === "creativita"     && <CreativitaPage      {...pageProps} />}
+      {page === "lead-contratti" && <LeadContrattiPage   {...pageProps} />}
+      {page === "budget"         && <BudgetPage          {...pageProps} />}
+      {page === "reach"          && <ReachPage           {...pageProps} />}
+      {page === "dashboard"      && <DashboardPage       {...pageProps} />}
     </>
   );
 }

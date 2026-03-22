@@ -145,7 +145,7 @@ export default function DashboardPage({ onNavigate, unlocked, setUnlocked }: Pag
 
   const { data: gscOverview,  loading: loadGscOv   } = useApiData(() => apiFetch("/api/search-console/overview",  p), [period.startDate]);
   const { data: gscQueries,   loading: loadGscQ    } = useApiData(() => apiFetch("/api/search-console/queries",   { ...p, rowLimit: "15" }), [period.startDate]);
-  const { data: ga4Summary,   loading: loadGa4Sum  } = useApiData(() => apiFetch("/api/analytics/summary"), []);
+  const { data: ga4Summary,   loading: loadGa4Sum  } = useApiData(() => apiFetch("/api/analytics/summary", p), [period.startDate]);
   const { data: ga4Overview,  loading: loadGa4Ov   } = useApiData(() => apiFetch("/api/analytics/overview",  p), [period.startDate]);
   const { data: ga4Channels,  loading: loadGa4Ch   } = useApiData(() => apiFetch("/api/analytics/channels",  p), [period.startDate]);
   const { data: ga4Pages,     loading: loadGa4Pg   } = useApiData(() => apiFetch("/api/analytics/pages",     { ...p, limit: "15" }), [period.startDate]);

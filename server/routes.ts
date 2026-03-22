@@ -728,13 +728,24 @@ export async function registerRoutes(
   });
 
   // ── GET /api/analytics/summary ────────────────────────────────────────────
-  // KPI con confronto periodo precedente (28 giorni vs 28 precedenti)
+  // KPI con confronto periodo precedente (dinamico — segue il selettore)
   app.get("/api/analytics/summary", async (req, res) => {
     try {
+      const startDate = (req.query.startDate as string) || "28daysAgo";
+      const endDate   = (req.query.endDate   as string) || "today";
+
+      // Calcola il periodo precedente della stessa durata
+      const start = new Date(resolveDate(startDate));
+      const end   = new Date(resolveDate(endDate));
+      const days  = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      const prevEnd   = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
+      const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days);
+      const fmt = (d: Date) => d.toISOString().split("T")[0];
+
       const data = await ga4Report({
         dateRanges: [
-          { startDate: "28daysAgo", endDate: "today",     name: "current"  },
-          { startDate: "56daysAgo", endDate: "29daysAgo", name: "previous" },
+          { startDate: resolveDate(startDate), endDate: resolveDate(endDate), name: "current"  },
+          { startDate: fmt(prevStart),          endDate: fmt(prevEnd),         name: "previous" },
         ],
         metrics: [
           { name: "sessions" }, { name: "totalUsers" }, { name: "newUsers" },

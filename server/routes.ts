@@ -546,6 +546,85 @@ export async function registerRoutes(
     }
   });
 
+  // ── GET /api/search-console/weekly ───────────────────────────────────────
+  // Dati settimanali: click organici totali + click brand (query con 'leonori')
+  // ?weeks=12  &brandKeyword=leonori
+  app.get("/api/search-console/weekly", async (req, res) => {
+    try {
+      const weeks        = parseInt((req.query.weeks        as string) || "12");
+      const brandKeyword = (req.query.brandKeyword as string) || "leonori";
+
+      const endDate   = resolveDate("today");
+      const startDate = daysAgo(weeks * 7 + 7); // settimana extra per sicurezza
+
+      const accessToken = await getGoogleAccessToken();
+      const headers = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
+      const gscUrl  = `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(GSC_SITE_URL)}/searchAnalytics/query`;
+
+      // Due chiamate in parallelo: totale per data + brand per data
+      const [totalRes, brandRes] = await Promise.all([
+        fetch(gscUrl, {
+          method: "POST", headers,
+          body: JSON.stringify({ startDate, endDate, dimensions: ["date"], rowLimit: 500 }),
+        }),
+        fetch(gscUrl, {
+          method: "POST", headers,
+          body: JSON.stringify({
+            startDate, endDate,
+            dimensions: ["date"],
+            dimensionFilterGroups: [{
+              filters: [{ dimension: "query", operator: "contains", expression: brandKeyword }]
+            }],
+            rowLimit: 500,
+          }),
+        }),
+      ]);
+
+      const totalJson = await totalRes.json() as any;
+      const brandJson = await brandRes.json() as any;
+      if (totalJson.error) throw new Error(totalJson.error.message);
+
+      // Mappa giornaliera
+      const totalByDate: Record<string, number> = {};
+      const brandByDate: Record<string, number> = {};
+      (totalJson.rows || []).forEach((r: any) => { totalByDate[r.keys[0]] = r.clicks; });
+      (brandJson.rows  || []).forEach((r: any) => { brandByDate[r.keys[0]] = r.clicks; });
+
+      // Raggruppa per settimana (lunedì come inizio)
+      function getWeekKey(dateStr: string): string {
+        const d = new Date(dateStr + "T00:00:00");
+        const day = d.getDay(); // 0=domenica
+        const diff = day === 0 ? -6 : 1 - day; // porta a lunedì
+        const monday = new Date(d);
+        monday.setDate(d.getDate() + diff);
+        return monday.toISOString().split("T")[0]; // es. "2024-01-08"
+      }
+
+      const weekMap: Record<string, { organic: number; brand: number }> = {};
+      Object.entries(totalByDate).forEach(([date, clicks]) => {
+        const wk = getWeekKey(date);
+        if (!weekMap[wk]) weekMap[wk] = { organic: 0, brand: 0 };
+        weekMap[wk].organic += clicks;
+        weekMap[wk].brand   += brandByDate[date] || 0;
+      });
+
+      // Ordina e prende le ultime N settimane
+      const weekly = Object.entries(weekMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-weeks)
+        .map(([weekStart, data]) => ({
+          weekStart,
+          organicClicks: data.organic,
+          brandClicks:   data.brand,
+        }));
+
+      res.json({ success: true, data: weekly });
+    } catch (err: any) {
+      console.error("[gsc/weekly]", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // GOOGLE ANALYTICS 4
   // ═══════════════════════════════════════════════════════════════════════════

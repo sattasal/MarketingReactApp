@@ -22,7 +22,7 @@ import { MetricCard }         from "../components/shared/MetricCard";
 import { TrendChart }         from "../components/shared/TrendChart";
 import { DataTable, ColDef }  from "../components/shared/DataTable";
 import { DateRangePicker, CWVScore } from "../components/shared/DatePickerAndCWV";
-import { useApiData }         from "../hooks/useApiData";
+import SpendSearchChart from "../components/shared/SpendSearchChart";
 import { PageProps }          from "../lib/types";
 
 // ─── FETCH HELPER ─────────────────────────────────────────────────────────────
@@ -350,6 +350,11 @@ export default function DashboardPage({ onNavigate, unlocked, setUnlocked }: Pag
             </div>
           )}
         </div>
+      </Section>
+
+      {/* ── CORRELAZIONE SPESA ↔ RICERCHE ─────────────────────────────────── */}
+      <Section title="Correlazione Spesa ↔ Ricerche organiche" accent="#6366f1">
+        <SpendSearchChart />
       </Section>
 
       {/* ── CORE WEB VITALS ───────────────────────────────────────────────── */}

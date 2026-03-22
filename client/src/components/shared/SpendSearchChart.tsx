@@ -168,10 +168,13 @@ export default function SpendSearchChart() {
     () => fetchSpending(WEEKS), []
   );
 
-  // Aggrega spesa settimanale
+ // Aggrega spesa settimanale
   const spendMap = useMemo(() => {
     if (!spendData) return {};
-    return aggregateSpending(spendData as SpendEntry[], WEEKS);
+    const result = aggregateSpending(spendData as SpendEntry[], WEEKS);
+    console.log("spendData[0]:", (spendData as any)[0]);
+    console.log("spendMap:", result);
+    return result;
   }, [spendData]);
 
   // Costruisce il dataset per il grafico

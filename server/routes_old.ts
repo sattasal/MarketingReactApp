@@ -981,7 +981,7 @@ export async function registerRoutes(
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // await seedDatabase(); // non usato — il database è su Supabase
+  await seedDatabase();
   return httpServer;
 }
 
@@ -1000,7 +1000,12 @@ function cleanSF(record: any): any {
   return r;
 }
 
-// ── Seed iniziale — disabilitato, db è su Supabase ───────────────────────────
+// ── Seed iniziale ─────────────────────────────────────────────────────────────
 export async function seedDatabase() {
-  // non usato
+  const existing = await storage.getMessages();
+  if (existing.length === 0) {
+    await storage.createMessage({ content: "Welcome to your new app!" });
+    await storage.createMessage({ content: "This is a fullstack template." });
+    await storage.createMessage({ content: "Go ahead and build something amazing!" });
+  }
 }

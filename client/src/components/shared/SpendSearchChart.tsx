@@ -15,9 +15,9 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
 } from "recharts";
-import { supabase } from "../lib/supabase";
-import { TABLE } from "../lib/constants";
-import { useApiData } from "../hooks/useApiData";
+import { supabase } from "../../lib/supabase";
+import { TABLE } from "../../lib/constants";
+import { useApiData } from "../../hooks/useApiData";
 
 // ─── TIPI ────────────────────────────────────────────────────────────────────
 interface WeeklyGSC {

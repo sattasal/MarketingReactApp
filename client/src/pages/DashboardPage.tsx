@@ -23,6 +23,7 @@ import { TrendChart }         from "../components/shared/TrendChart";
 import { DataTable, ColDef }  from "../components/shared/DataTable";
 import { DateRangePicker, CWVScore } from "../components/shared/DatePickerAndCWV";
 import SpendSearchChart from "../components/shared/SpendSearchChart";
+import { useApiData }         from "../hooks/useApiData";
 import { PageProps }          from "../lib/types";
 
 // ─── FETCH HELPER ─────────────────────────────────────────────────────────────

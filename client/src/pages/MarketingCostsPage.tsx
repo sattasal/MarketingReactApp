@@ -5,7 +5,7 @@ import { PageProps, Entry, CsvImportRow } from "../lib/types";
 import {
   parseCreativitaFiles, isImageUrl, getMediaColor, getMonthKey, getMonthLabel,
   getMonthLabelShort, getCurrentMonthKey, formatEur, formatDate, formatFileSize,
-  calcImportoRimborso, calcSpesaNetta, exportCSV, processMetaCSV, processGoogleCSV, mapEntryFn
+  calcImportoRimborso, calcSpesaNetta, exportCSV, processMetaCSV, processGoogleCSV, metaParseBrandModel, googleBrandFromAccount, googleModelFromCampaign, mapEntryFn
 } from "../lib/utils";
 import { NavBar, inputStyle } from "../components/shared/NavBar";
 import { PageShell } from "../components/shared/PageShell";
@@ -259,7 +259,7 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
   const [googleImportRows, setGoogleImportRows] = useState<CsvImportRow[] | null>(null);
   const [googleImporting, setGoogleImporting] = useState(false);
   const [duplicateEntry, setDuplicateEntry] = useState<Entry | null>(null);
-  const [sortField, setSortField] = useState<"mese" | "descrizione" | "tipologia" | "brand" | "none">("none");
+  const [sortField, setSortField] = useState<"mese" | "periodo" | "descrizione" | "tipologia" | "brand" | "none">("none");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const loadEntries = useCallback(async () => {
@@ -347,7 +347,107 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
   const toggleDaConfermare = async (entry: Entry) => { try { await supabase.update(TABLE, entry.id, { da_confermare: !entry.da_confermare }); setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, da_confermare: !e.da_confermare } : e)); } catch (e) { showToast("❌ Errore"); } };
 
   const handleMetaCSV = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { try { const parsed = processMetaCSV(ev.target?.result as string); setMetaImportRows(parsed); } catch (err) { showToast("❌ Errore nel parsing"); } }; reader.readAsText(file); e.target.value = ""; };
+
+  const [metaApiLoading, setMetaApiLoading] = useState(false);
+  const [metaApiModal, setMetaApiModal] = useState(false);
+  const [metaApiMonth, setMetaApiMonth] = useState(getCurrentMonthKey());
+
+  const handleMetaAPI = async () => {
+    setMetaApiLoading(true);
+    try {
+      const [y, m] = metaApiMonth.split("-").map(Number);
+      const from = `${y}-${String(m).padStart(2, "0")}-01`;
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const to = `${y}-${String(m).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+      const res = await fetch(`/api/meta/insights?from=${from}&to=${to}`);
+      const json = await res.json();
+
+      if (json.error) { showToast("❌ " + json.error); return; }
+      if (!json.data?.length) { showToast("⚠️ Nessun dato trovato per il mese selezionato"); return; }
+
+      // Usa lo stesso parser già esistente per CSV Meta
+      // Costruiamo un testo CSV sintetico compatibile con processMetaCSV
+      // oppure convertiamo direttamente i dati API nel formato CsvImportRow
+      const parsed: CsvImportRow[] = [];
+      const brandMap: Record<string, { brand: string; models: Set<string>; adsets: string[]; total: number; start: string; end: string }> = {};
+
+      for (const row of json.data) {
+        const spent = parseFloat(row.spend) || 0;
+        if (spent === 0) continue;
+        const { brand, model } = metaParseBrandModel(row.campaign_name, row.adset_name);
+        if (!brandMap[brand]) brandMap[brand] = { brand, models: new Set(), adsets: [], total: 0, start: row.date_start, end: row.date_stop };
+        brandMap[brand].models.add(model);
+        brandMap[brand].adsets.push(row.adset_name);
+        brandMap[brand].total += spent;
+      }
+
+      for (const g of Object.values(brandMap).sort((a, b) => b.total - a.total)) {
+        parsed.push({
+          brand: g.brand,
+          soggetto: [...g.models].join(", "),
+          descrizione: g.adsets.join(", "),
+          spesa: Math.round(g.total * 100) / 100,
+          dataInizio: g.start,
+          dataFine: g.end,
+          selected: true,
+          piattaforma: "Meta",
+        });
+      }
+
+      setMetaApiModal(false);
+      setMetaImportRows(parsed);
+    } catch (err: any) {
+      showToast("❌ Errore connessione API: " + err.message);
+    } finally {
+      setMetaApiLoading(false);
+    }
+  };
   const handleGoogleCSV = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = ev => { try { const parsed = processGoogleCSV(ev.target?.result as string); setGoogleImportRows(parsed); } catch (err) { showToast("❌ Errore nel parsing"); } }; reader.readAsText(file); e.target.value = ""; };
+
+  const [googleApiLoading, setGoogleApiLoading] = useState(false);
+  const [googleApiModal, setGoogleApiModal] = useState(false);
+  const [googleApiMonth, setGoogleApiMonth] = useState(getCurrentMonthKey());
+
+  const handleGoogleAPI = async () => {
+    setGoogleApiLoading(true);
+    try {
+      const [y, m] = googleApiMonth.split("-").map(Number);
+      const from = `${y}-${String(m).padStart(2, "0")}-01`;
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const to = `${y}-${String(m).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+      const res = await fetch(`/api/google/insights?from=${from}&to=${to}`);
+      const json = await res.json();
+
+      if (json.error) { showToast("❌ " + json.error); return; }
+      if (!json.data?.length) { showToast("⚠️ Nessun dato trovato per il mese selezionato"); return; }
+
+      // Converti i dati Google API nel formato CsvImportRow
+      // account_name es. "Leonori-Fiat" → brand "Fiat"
+      const parsed: CsvImportRow[] = json.data.map((row: any) => {
+        const brand = googleBrandFromAccount(row.account_name);
+        const soggetto = googleModelFromCampaign(row.campaigns ?? "");
+        return {
+          brand,
+          soggetto,
+          descrizione: row.account_name + " — " + (row.campaigns ?? ""),
+          spesa: row.cost,
+          dataInizio: row.date_start,
+          dataFine: row.date_stop,
+          selected: true,
+          piattaforma: "Google",
+        };
+      });
+
+      setGoogleApiModal(false);
+      setGoogleImportRows(parsed);
+    } catch (err: any) {
+      showToast("❌ Errore connessione API: " + err.message);
+    } finally {
+      setGoogleApiLoading(false);
+    }
+  };
   const handleCSVConfirm = async (rows: CsvImportRow[], isMeta: boolean) => {
     isMeta ? setMetaImporting(true) : setGoogleImporting(true);
     try {
@@ -371,6 +471,7 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
     let cmp = 0;
     if (sortField === "none") cmp = a.dataInizio.localeCompare(b.dataInizio);
     else if (sortField === "mese") cmp = a.meseCompetenza.localeCompare(b.meseCompetenza) || a.dataInizio.localeCompare(b.dataInizio);
+    else if (sortField === "periodo") cmp = a.dataInizio.localeCompare(b.dataInizio);
     else if (sortField === "descrizione") cmp = a.descrizione.localeCompare(b.descrizione, "it");
     else if (sortField === "tipologia") cmp = a.tipologia.localeCompare(b.tipologia, "it");
     else if (sortField === "brand") cmp = a.brand.localeCompare(b.brand, "it");
@@ -392,7 +493,9 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {unlocked && <>
             <label className="btn" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5)", color: "#fff", padding: "8px 16px", borderRadius: 8, fontSize: 12 }}>📊 Meta Ads CSV<input type="file" accept=".csv" onChange={handleMetaCSV} style={{ display: "none" }} /></label>
+            <button className="btn" onClick={() => setMetaApiModal(true)} style={{ background: "linear-gradient(135deg, #1877f2, #0a5fd8)", color: "#fff", padding: "8px 16px", borderRadius: 8, fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>🔄 Meta API</button>
             <label className="btn" style={{ background: "linear-gradient(135deg, #ea4335, #c5221f)", color: "#fff", padding: "8px 16px", borderRadius: 8, fontSize: 12 }}>📈 Google Ads CSV<input type="file" accept=".csv" onChange={handleGoogleCSV} style={{ display: "none" }} /></label>
+            <button className="btn" onClick={() => setGoogleApiModal(true)} style={{ background: "linear-gradient(135deg, #34a853, #1e8e3e)", color: "#fff", padding: "8px 16px", borderRadius: 8, fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>🔄 Google API</button>
           </>}
         </div>
       </div>
@@ -406,6 +509,7 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
           </div>
           {formVisible && (
             <div style={{ padding: "0 28px 24px" }}>
+              {/* Riga 1: date, descrizione, tipologia, brand, piattaforma */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
                 {form.tipologia !== "Stampa" && (
                   <>
@@ -413,13 +517,130 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
                     <Field label="Data fine"><input type="date" value={form.dataFine} min={form.dataInizio} onChange={e => setForm({ ...form, dataFine: e.target.value })} style={inputStyle} /></Field>
                   </>
                 )}
-                <Field label="Descrizione"><input type="text" value={form.descrizione} onChange={e => setForm({ ...form, descrizione: e.target.value })} style={inputStyle} /></Field>
-                <Field label="Tipologia"><select value={form.tipologia} onChange={e => setForm({ ...form, tipologia: e.target.value })} style={inputStyle}>{TIPOLOGIE.map(t => <option key={t}>{t}</option>)}</select></Field>
+                <Field label="Descrizione"><input type="text" placeholder="Descrizione..." value={form.descrizione} onChange={e => setForm({ ...form, descrizione: e.target.value })} style={inputStyle} /></Field>
+                <Field label="Tipologia"><select value={form.tipologia} onChange={e => setForm({ ...form, tipologia: e.target.value, dateSingole: e.target.value === "Stampa" ? form.dateSingole : [], piattaforma: e.target.value !== "Digital Adv" ? "" : form.piattaforma })} style={inputStyle}>{TIPOLOGIE.map(t => <option key={t}>{t}</option>)}</select></Field>
                 <Field label="Brand"><select value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} style={inputStyle}>{BRANDS.map(b => <option key={b}>{b}</option>)}</select></Field>
-                <Field label="Spesa (€)"><input type="number" value={form.spesa} onChange={e => setForm({ ...form, spesa: e.target.value })} style={inputStyle} /></Field>
+                {form.tipologia === "Digital Adv" && (
+                  <Field label="Piattaforma">
+                    <select value={form.piattaforma} onChange={e => setForm({ ...form, piattaforma: e.target.value })} style={{ ...inputStyle, borderColor: "#7c3aed" }}>
+                      <option value="">— Non specificata —</option>
+                      <option value="Google">Google</option>
+                      <option value="Meta">Meta</option>
+                      <option value="Portali">Portali</option>
+                      <option value="Altro">Altro</option>
+                    </select>
+                  </Field>
+                )}
+                <Field label="Soggetto"><input type="text" placeholder="Soggetto..." value={form.soggetto} onChange={e => setForm({ ...form, soggetto: e.target.value })} style={inputStyle} /></Field>
+                <Field label="Spesa (€)"><input type="number" min="0" step="1" placeholder="0" value={form.spesa} onChange={e => setForm({ ...form, spesa: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace" }} /></Field>
+                <Field label="Rimborso (%)"><input type="number" min="0" max="100" step="1" placeholder="0" value={form.rimborsoPct} onChange={e => setForm({ ...form, rimborsoPct: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace" }} /></Field>
               </div>
-              {form.tipologia === "Stampa" && <div style={{ marginTop: 14 }}><Field label="📰 Date uscite stampa"><StampaCalendar selected={form.dateSingole} onChange={dates => setForm({ ...form, dateSingole: dates })} baseMonth={getCurrentMonthKey()} /></Field></div>}
-              <div style={{ marginTop: 18 }}><button className="btn" onClick={handleSubmit} disabled={saving} style={{ background: "#3b82f6", color: "#fff", padding: "10px 28px", borderRadius: 10 }}>{saving ? "Salvataggio..." : "Salva"}</button></div>
+
+              {/* Stampa: multi-date picker */}
+              {form.tipologia === "Stampa" && (
+                <div style={{ marginTop: 14 }}>
+                  <Field label="📰 Date uscite stampa (clicca i giorni)">
+                    <StampaCalendar selected={form.dateSingole} onChange={dates => setForm({ ...form, dateSingole: dates })} baseMonth={getCurrentMonthKey()} />
+                  </Field>
+                </div>
+              )}
+
+              {/* Spesa dichiarata — visibile solo se rimborso > 0 */}
+              {parseFloat(form.rimborsoPct) > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginTop: 14 }}>
+                  <Field label="Spesa dichiarata (€)">
+                    <input type="number" min="0" step="1" placeholder={form.spesa || "0"} value={form.costoDichiarato} onChange={e => setForm({ ...form, costoDichiarato: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", borderColor: "#f59e0b" }} />
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>Default = spesa</span>
+                  </Field>
+                </div>
+              )}
+
+              {/* Checkboxes Piano Extra + Collettiva */}
+              <div style={{ display: "flex", gap: 24, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.pianoExtra} onChange={e => setForm({ ...form, pianoExtra: e.target.checked })} style={{ accentColor: "#8b5cf6", width: 16, height: 16 }} /> 📌 Piano Extra
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.collettiva} onChange={e => {
+                    const checked = e.target.checked;
+                    if (checked) {
+                      const meseIdx = form.dateSingole.length > 0
+                        ? new Date(form.dateSingole.sort()[0] + "T00:00:00").getMonth()
+                        : new Date(form.dataInizio + "T00:00:00").getMonth();
+                      const defaultName = `${form.brand} - ${MESI[meseIdx]}`;
+                      setForm({ ...form, collettiva: true, nomeCollettiva: form.nomeCollettiva || defaultName });
+                    } else {
+                      setForm({ ...form, collettiva: false, nomeCollettiva: "" });
+                    }
+                  }} style={{ accentColor: "#059669", width: 16, height: 16 }} /> 🤝 Collettiva
+                </label>
+              </div>
+
+              {/* Campi collettiva */}
+              {form.collettiva && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14, marginTop: 14 }}>
+                  <Field label="Nome Collettiva"><input type="text" placeholder="Nome..." value={form.nomeCollettiva} onChange={e => setForm({ ...form, nomeCollettiva: e.target.value })} style={{ ...inputStyle, borderColor: "#10b981" }} /></Field>
+                  <Field label="Numero partecipanti"><input type="number" min="1" step="1" value={form.numeroPartecipanti} onChange={e => setForm({ ...form, numeroPartecipanti: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", borderColor: "#10b981" }} /></Field>
+                </div>
+              )}
+
+              {/* Campi OOH */}
+              {form.tipologia === "OOH" && (
+                <div style={{ marginTop: 14, padding: 14, background: "#fef9c3", borderRadius: 12, border: "1px solid #fde68a" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: ".3px", marginBottom: 10 }}>🏙 Dettagli OOH</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
+                    <Field label="Link Mappa (Google My Maps)"><input type="url" placeholder="https://www.google.com/maps/d/..." value={form.mappaUrl} onChange={e => setForm({ ...form, mappaUrl: e.target.value })} style={{ ...inputStyle, borderColor: "#fbbf24" }} /></Field>
+                    <Field label="Poster 3x2"><input type="number" min="0" step="1" placeholder="0" value={form.poster3x2} onChange={e => setForm({ ...form, poster3x2: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", borderColor: "#fbbf24" }} /></Field>
+                    <Field label="Poster altri formati"><input type="number" min="0" step="1" placeholder="0" value={form.posterAltri} onChange={e => setForm({ ...form, posterAltri: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", borderColor: "#fbbf24" }} /></Field>
+                    <Field label="Poster maxi formati"><input type="number" min="0" step="1" placeholder="0" value={form.posterMaxi} onChange={e => setForm({ ...form, posterMaxi: e.target.value })} style={{ ...inputStyle, fontFamily: "'JetBrains Mono', monospace", borderColor: "#fbbf24" }} /></Field>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <Field label="Fattura PDF (opzionale)">
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "#fff", border: "1px solid #fde68a", cursor: "pointer" }}>
+                          📄 Scegli PDF<input type="file" accept=".pdf" onChange={e => { const f = e.target.files?.[0]; if (f && !f.name.toLowerCase().endsWith(".pdf")) { setFileError("La fattura deve essere un PDF"); e.target.value = ""; return; } setFatturaFile(f || null); }} style={{ display: "none" }} />
+                        </label>
+                        {fatturaFile && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef3c7", color: "#92400e", padding: "4px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500 }}>✓ {fatturaFile.name} <span onClick={() => setFatturaFile(null)} style={{ cursor: "pointer", opacity: .6, fontSize: 14 }}>✕</span></span>}
+                        {!fatturaFile && editingId && entries.find(e => e.id === editingId)?.fattura_nome && <span style={{ fontSize: 12, color: "#92400e" }}>Fattura: <strong>{entries.find(e => e.id === editingId)?.fattura_nome}</strong></span>}
+                      </div>
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload creatività */}
+              <div style={{ marginTop: 14 }}>
+                <Field label="Creatività (max 500 KB ciascuna)">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "#f1f5f9", border: "1px solid #e2e8f0", cursor: "pointer" }}>
+                      📎 Aggiungi file<input type="file" multiple accept="image/*,.pdf,.ai,.psd,.eps,.svg" onChange={handleFileSelect} style={{ display: "none" }} />
+                    </label>
+                    {/* File esistenti (in modifica) */}
+                    {editingId && (() => {
+                      const existing = entries.find(e => e.id === editingId);
+                      const files = existing ? parseCreativitaFiles(existing.creativita_url, existing.creativita_nome) : [];
+                      return files.map((f, i) => (
+                        <a key={"ex" + i} href={f.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#dbeafe", color: "#2563eb", padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 500, textDecoration: "none" }}>📄 {f.nome || "File " + (i + 1)}</a>
+                      ));
+                    })()}
+                    {/* Nuovi file da caricare */}
+                    {selectedFiles.map((f, i) => (
+                      <span key={"new" + i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#ecfdf5", color: "#059669", padding: "4px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500 }}>
+                        ✓ {f.name} ({formatFileSize(f.size)})<span onClick={() => removeFile(i)} style={{ cursor: "pointer", opacity: .6, fontSize: 14 }}>✕</span>
+                      </span>
+                    ))}
+                    {fileError && <span style={{ color: "#dc2626", fontSize: 12, fontWeight: 500 }}>❌ {fileError}</span>}
+                  </div>
+                </Field>
+              </div>
+
+              {/* Bottone salva */}
+              <div style={{ marginTop: 18, display: "flex", gap: 10, alignItems: "center" }}>
+                <button className="btn" onClick={handleSubmit} disabled={saving} style={{ background: saving ? "#94a3b8" : "linear-gradient(135deg, #3b82f6, #2563eb)", color: "#fff", padding: "10px 28px", borderRadius: 10, fontSize: 14, boxShadow: saving ? "none" : "0 2px 8px rgba(59,130,246,.3)" }}>
+                  {saving ? "Salvataggio..." : editingId ? "Salva modifiche" : "Inserisci"}
+                </button>
+                <span style={{ fontSize: 13, color: "#94a3b8" }}>Mese: <strong style={{ color: "#475569" }}>{form.dataInizio ? getMonthLabelShort(getMonthKey(form.dataInizio)) : "—"}</strong></span>
+              </div>
             </div>
           )}
         </div>
@@ -429,7 +650,33 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
       <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", marginBottom: 20, border: "1px solid #e8ecf1" }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>🔍 Filtri:</span>
-          <button className="btn" onClick={() => setMonthDropdownOpen(!monthDropdownOpen)} style={{ background: "#f1f5f9", padding: "6px 14px", borderRadius: 8, fontSize: 13 }}>🗓 {selectedMonths.length === 0 ? "Tutti i mesi" : `${selectedMonths.length} mesi`}</button>
+          <div style={{ position: "relative" }}>
+            <button className="btn" onClick={() => setMonthDropdownOpen(!monthDropdownOpen)} style={{ background: "#f1f5f9", padding: "6px 14px", borderRadius: 8, fontSize: 13 }}>
+              🗓 {selectedMonths.length === 0 ? "Tutti i mesi" : `${selectedMonths.length} mes${selectedMonths.length === 1 ? "e" : "i"}`} ▾
+            </button>
+            {monthDropdownOpen && (
+              <>
+                <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setMonthDropdownOpen(false)} />
+                <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.12)", padding: "10px 4px", minWidth: 180 }}>
+                  <div style={{ padding: "2px 12px 8px", fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px" }}>Seleziona mesi</div>
+                  <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", cursor: "pointer", fontSize: 13, borderRadius: 6 }}>
+                      <input type="checkbox" checked={selectedMonths.length === 0} onChange={() => setSelectedMonths([])} />
+                      <span style={{ fontWeight: 500 }}>Tutti i mesi</span>
+                    </label>
+                    {availableMonths.map(m => (
+                      <label key={m} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", cursor: "pointer", fontSize: 13, borderRadius: 6, background: selectedMonths.includes(m) ? "#eff6ff" : undefined }}>
+                        <input type="checkbox" checked={selectedMonths.includes(m)} onChange={() => {
+                          setSelectedMonths(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]);
+                        }} />
+                        {getMonthLabel(m)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 13 }}><option value="all">Tutti i brand</option>{availableBrands.map(b => <option key={b}>{b}</option>)}</select>
           <select value={filterTipologia} onChange={e => setFilterTipologia(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "6px 10px", fontSize: 13 }}><option value="all">Tutte tipologie</option>{availableTipologie.map(t => <option key={t}>{t}</option>)}</select>
         </div>
@@ -437,13 +684,46 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
 
       <ExportBar onCSV={() => exportCSV("costi.csv", ["Mese", "Descrizione", "Spesa"], filtered.map(e => [e.meseCompetenza, e.descrizione, e.spesa.toString()]))} onPrint={() => window.print()} />
 
-      {/* Tabella (identica all'originale) */}
-      <div style={{ background: "#fff", borderRadius: 16, overflowX: "auto", border: "1px solid #e8ecf1" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      {/* Tabella colonne fisse */}
+      <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1px solid #e8ecf1" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: "3%" }} />   {/* checkbox */}
+            <col style={{ width: "3%" }} />   {/* eye */}
+            <col style={{ width: "7%" }} />   {/* Mese */}
+            <col style={{ width: "8%" }} />   {/* Periodo */}
+            <col style={{ width: "20%" }} />  {/* Descrizione */}
+            <col style={{ width: "10%" }} />  {/* Tipo */}
+            <col style={{ width: "8%" }} />   {/* Brand */}
+            <col style={{ width: "8%" }} />   {/* Sogg. */}
+            <col style={{ width: "4%" }} />   {/* File */}
+            <col style={{ width: "8%" }} />   {/* Spesa */}
+            <col style={{ width: "8%" }} />   {/* Imp. Rimb. */}
+            <col style={{ width: "8%" }} />   {/* Sp. Netta */}
+            {unlocked && <><col style={{ width: "3%" }} /><col style={{ width: "10%" }} /></>}
+          </colgroup>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              <th style={{ padding: "10px", width: 36, textAlign: "center" }}><input type="checkbox" onChange={() => setSelectedRows(new Set(filtered.map(e=>e.id)))} /></th>
-              {["", "Mese", "Periodo", "Descrizione", "Tipo", "Brand", "Sogg.", "File", "Spesa", "Imp. Rimb.", "Sp. Netta", "OK", ""].map((h, i) => <th key={i} style={{ padding: "10px", textAlign: "left", fontSize: 10, color: "#475569" }}>{h}</th>)}
+              <th style={{ padding: "10px", textAlign: "center" }}><input type="checkbox" onChange={() => setSelectedRows(new Set(filtered.map(e=>e.id)))} /></th>
+              {([
+                { label: "", field: null },
+                { label: "Mese", field: "mese" },
+                { label: "Periodo", field: "periodo" },
+                { label: "Descrizione", field: null },
+                { label: "Tipo", field: "tipologia" },
+                { label: "Brand", field: "brand" },
+                { label: "Sogg.", field: null },
+                { label: "File", field: null },
+                { label: "Spesa", field: null },
+                { label: "Imp. Rimb.", field: null },
+                { label: "Sp. Netta", field: null },
+                ...(unlocked ? [{ label: "OK", field: null }, { label: "", field: null }] : [])
+              ] as { label: string; field: string | null }[]).map(({ label, field }, i) => (
+                <th key={i} onClick={field ? () => toggleSort(field) : undefined}
+                  style={{ padding: "10px", textAlign: i >= 9 && i <= 11 ? "right" : "left", fontSize: 10, color: field ? "#1e40af" : "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: field ? "pointer" : "default", userSelect: "none", background: sortField === field ? "#eff6ff" : undefined }}>
+                  {label}{field && sortField === field ? (sortDir === "asc" ? " ▲" : " ▼") : field ? " ↕" : ""}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -451,19 +731,26 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
               <tr key={e.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                 <td style={{ ...cellStyle, textAlign: "center" }}><input type="checkbox" checked={selectedRows.has(e.id)} onChange={() => { const s = new Set(selectedRows); s.has(e.id) ? s.delete(e.id) : s.add(e.id); setSelectedRows(s); }} /></td>
                 <td style={{ padding: 4 }}><button className="eye-btn" onClick={() => setDetailEntry(e)}>👁</button></td>
-                <td style={cellStyle}>{getMonthLabelShort(e.meseCompetenza)}</td>
-                <td style={cellStyle}>{formatDate(e.dataInizio)}</td>
-                <td style={{ ...cellStyle, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{e.descrizione}</td>
-                <td style={cellStyle}>{e.tipologia}</td>
-                <td style={cellStyle}>{e.brand}</td>
-                <td style={cellStyle}>{e.soggetto || "—"}</td>
-                <td style={cellStyle}>{e.creativita_url ? "📄" : "—"}</td>
-                <td style={{ ...cellStyle, textAlign: "right" }}>{formatEur(e.spesa)}</td>
-                <td style={{ ...cellStyle, textAlign: "right" }}>{formatEur(calcImportoRimborso(e))}</td>
-                <td style={{ ...cellStyle, textAlign: "right", color: "#059669", fontWeight: 600 }}>{formatEur(calcSpesaNetta(e))}</td>
+                <td style={{ ...cellStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{getMonthLabelShort(e.meseCompetenza)}</td>
+                <td style={{ ...cellStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{formatDate(e.dataInizio)}</td>
+                <td style={{ ...cellStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={e.descrizione}>{e.descrizione}</td>
+                <td style={{ ...cellStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.tipologia}
+                  {e.tipologia === "Digital Adv" && e.piattaforma && (
+                    <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 700, padding: "1px 4px", borderRadius: 4, background: e.piattaforma === "Google" ? "#fee2e2" : e.piattaforma === "Meta" ? "#ede9fe" : "#f1f5f9", color: e.piattaforma === "Google" ? "#dc2626" : e.piattaforma === "Meta" ? "#7c3aed" : "#64748b" }}>
+                      {e.piattaforma}
+                    </span>
+                  )}
+                </td>
+                <td style={{ ...cellStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.brand}</td>
+                <td style={{ ...cellStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.soggetto || "—"}</td>
+                <td style={{ ...cellStyle, textAlign: "center" }}>{e.creativita_url ? "📄" : "—"}</td>
+                <td style={{ ...cellStyle, textAlign: "right", whiteSpace: "nowrap" }}>{formatEur(e.spesa)}</td>
+                <td style={{ ...cellStyle, textAlign: "right", whiteSpace: "nowrap" }}>{formatEur(calcImportoRimborso(e))}</td>
+                <td style={{ ...cellStyle, textAlign: "right", whiteSpace: "nowrap", color: "#059669", fontWeight: 600 }}>{formatEur(calcSpesaNetta(e))}</td>
                 {unlocked && <>
                   <td style={{ ...cellStyle, textAlign: "center" }}><input type="checkbox" checked={e.da_confermare} onChange={() => toggleDaConfermare(e)} /></td>
-                  <td style={cellStyle}>
+                  <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>
                     <button className="btn" onClick={() => setDuplicateEntry(e)}>📋</button>
                     <button className="btn" onClick={() => handleEdit(e)}>✏️</button>
                     <button className="btn" onClick={() => handleDelete(e.id)}>🗑</button>
@@ -481,7 +768,57 @@ export default function MarketingCostsPage({ onNavigate, unlocked, setUnlocked }
       </div>
 
       {detailEntry && <DetailModal entry={detailEntry} onClose={() => setDetailEntry(null)} />}
+      {/* Modal selezione mese per importazione Meta API */}
+      {metaApiModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setMetaApiModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 400, padding: 28, boxShadow: "0 24px 60px rgba(0,0,0,.2)" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>🔄 Importa da Meta API</h3>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#64748b" }}>Seleziona il mese da importare. I dati verranno raggruppati per brand come nel CSV.</p>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Mese</label>
+            <select value={metaApiMonth} onChange={e => setMetaApiMonth(e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 24 }}>
+              {Array.from({ length: 12 }, (_, i) => {
+                const now = new Date();
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                return <option key={key} value={key}>{getMonthLabel(key)}</option>;
+              })}
+            </select>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setMetaApiModal(false)} style={{ background: "#f1f5f9", color: "#475569", padding: "9px 20px", borderRadius: 8 }}>Annulla</button>
+              <button className="btn" onClick={handleMetaAPI} disabled={metaApiLoading} style={{ background: metaApiLoading ? "#94a3b8" : "linear-gradient(135deg, #1877f2, #0a5fd8)", color: "#fff", padding: "9px 24px", borderRadius: 8, fontWeight: 600 }}>
+                {metaApiLoading ? "⏳ Caricamento..." : "📥 Scarica dati"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {metaImportRows && <CsvImportModal rows={metaImportRows} onConfirm={r => handleCSVConfirm(r, true)} onClose={() => setMetaImportRows(null)} saving={metaImporting} title="Importa Meta Ads" existingEntries={entries} />}
+      {/* Modal selezione mese per importazione Google API */}
+      {googleApiModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setGoogleApiModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 400, padding: 28, boxShadow: "0 24px 60px rgba(0,0,0,.2)" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>🔄 Importa da Google Ads API</h3>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#64748b" }}>Seleziona il mese da importare. I dati vengono aggregati per account (un brand per riga).</p>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", marginBottom: 6 }}>Mese</label>
+            <select value={googleApiMonth} onChange={e => setGoogleApiMonth(e.target.value)} style={{ ...inputStyle, width: "100%", marginBottom: 24 }}>
+              {Array.from({ length: 12 }, (_, i) => {
+                const now = new Date();
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                return <option key={key} value={key}>{getMonthLabel(key)}</option>;
+              })}
+            </select>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="btn" onClick={() => setGoogleApiModal(false)} style={{ background: "#f1f5f9", color: "#475569", padding: "9px 20px", borderRadius: 8 }}>Annulla</button>
+              <button className="btn" onClick={handleGoogleAPI} disabled={googleApiLoading} style={{ background: googleApiLoading ? "#94a3b8" : "linear-gradient(135deg, #34a853, #1e8e3e)", color: "#fff", padding: "9px 24px", borderRadius: 8, fontWeight: 600 }}>
+                {googleApiLoading ? "⏳ Caricamento..." : "📥 Scarica dati"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {googleImportRows && <CsvImportModal rows={googleImportRows} onConfirm={r => handleCSVConfirm(r, false)} onClose={() => setGoogleImportRows(null)} saving={googleImporting} title="Importa Google Ads" existingEntries={entries} />}
       {duplicateEntry && <DuplicateModal entry={duplicateEntry} onClose={() => setDuplicateEntry(null)} onSaved={async () => { setDuplicateEntry(null); await loadEntries(); }} />}
     </PageShell>

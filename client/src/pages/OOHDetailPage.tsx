@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { TABLE } from "../lib/constants";
 import { PageProps, Entry } from "../lib/types";
 import {
-  getMonthLabelShort, formatDate, formatEur, exportCSV,
+  getMonthLabelShort, getMonthLabel, formatDate, formatEur, exportCSV,
   getEmbedUrl, parseCreativitaFiles, mapEntryFn
 } from "../lib/utils";
 import { NavBar, inputStyle } from "../components/shared/NavBar";
@@ -18,7 +18,11 @@ export default function OOHDetailPage({ onNavigate, unlocked, setUnlocked }: Pag
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
   const [filterYear, setFilterYear] = useState<string>("all");
+  const [filterMonth, setFilterMonth] = useState<string>("all");
   const [filterBrand, setFilterBrand] = useState<string>("all");
+  const [sortField, setSortField] = useState<"mese" | "periodo" | "brand" | "none">("none");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const toggleSort = (f: "mese" | "periodo" | "brand") => { if (sortField === f) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortField(f); setSortDir("asc"); } };
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [mapEntry, setMapEntry] = useState<Entry | null>(null);
 
@@ -32,12 +36,20 @@ export default function OOHDetailPage({ onNavigate, unlocked, setUnlocked }: Pag
   useEffect(() => { loadEntries(); }, [loadEntries]);
 
   const availableYears = Array.from(new Set(entries.map(e => e.meseCompetenza.split("-")[0]))).sort().reverse();
+  const availableMonths = Array.from(new Set(entries.map(e => e.meseCompetenza))).sort().reverse();
   const availableBrands = Array.from(new Set(entries.map(e => e.brand))).sort();
   
   const filtered = entries.filter(e => {
     if (filterYear !== "all" && !e.meseCompetenza.startsWith(filterYear)) return false;
+    if (filterMonth !== "all" && e.meseCompetenza !== filterMonth) return false;
     if (filterBrand !== "all" && e.brand !== filterBrand) return false;
     return true;
+  }).sort((a, b) => {
+    let cmp = 0;
+    if (sortField === "mese") cmp = a.meseCompetenza.localeCompare(b.meseCompetenza);
+    else if (sortField === "periodo") cmp = a.dataInizio.localeCompare(b.dataInizio);
+    else if (sortField === "brand") cmp = a.brand.localeCompare(b.brand, "it");
+    return sortDir === "asc" ? cmp : -cmp;
   });
 
   const toggleRow = (id: string) => { setSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }); };
@@ -61,12 +73,26 @@ export default function OOHDetailPage({ onNavigate, unlocked, setUnlocked }: Pag
       <div style={{ background: "#fff", borderRadius: 14, padding: "14px 20px", marginBottom: 24, border: "1px solid #e8ecf1", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>🔍 Filtri:</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 12, color: "#64748b" }}>Anno:</span>
-          <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setSelectedRows(new Set()); }} style={{ ...inputStyle, width: "auto", padding: "5px 10px", fontSize: 13 }}><option value="all">Tutti</option>{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
+          <span style={{ fontSize: 12, color: "#64748b" }}>Mese:</span>
+          <select value={filterMonth} onChange={e => { setFilterMonth(e.target.value); setFilterYear("all"); setSelectedRows(new Set()); }} style={{ ...inputStyle, width: "auto", padding: "5px 10px", fontSize: 13 }}>
+            <option value="all">Tutti</option>
+            {availableMonths.map(m => <option key={m} value={m}>{getMonthLabel(m)}</option>)}
+          </select>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 12, color: "#64748b" }}>Brand:</span>
-          <select value={filterBrand} onChange={e => { setFilterBrand(e.target.value); setSelectedRows(new Set()); }} style={{ ...inputStyle, width: "auto", padding: "5px 10px", fontSize: 13 }}><option value="all">Tutti</option>{availableBrands.map(b => <option key={b} value={b}>{b}</option>)}</select>
+          <select value={filterBrand} onChange={e => { setFilterBrand(e.target.value); setSelectedRows(new Set()); }} style={{ ...inputStyle, width: "auto", padding: "5px 10px", fontSize: 13 }}>
+            <option value="all">Tutti</option>
+            {availableBrands.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "#64748b" }}>Ordina:</span>
+          {(["mese", "periodo", "brand"] as const).map(f => (
+            <button key={f} className="btn" onClick={() => toggleSort(f)} style={{ background: sortField === f ? "#eff6ff" : "#f1f5f9", color: sortField === f ? "#1e40af" : "#475569", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: sortField === f ? 700 : 400 }}>
+              {f === "mese" ? "Mese" : f === "periodo" ? "Periodo" : "Brand"}{sortField === f ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+            </button>
+          ))}
         </div>
       </div>
 

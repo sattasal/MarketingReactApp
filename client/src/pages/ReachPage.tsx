@@ -3,12 +3,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, Cell
 } from "recharts";
-import {
-  supabase, TABLE, TIPOLOGIE, BRANDS, STORAGE_BUCKET, MAX_FILE_SIZE,
-  formatEur, getMonthKey, getCurrentMonthKey, today, inputStyle,
-  PageShell, NavBar, parseCreativitaFiles, isImageUrl,
-  type PageType, type PageProps
-} from "../App";
+import { supabase } from "../lib/supabase";
+import { TABLE, TIPOLOGIE, BRANDS, STORAGE_BUCKET, MAX_FILE_SIZE, today } from "../lib/constants";
+import { formatEur, getMonthKey, getCurrentMonthKey, parseCreativitaFiles, isImageUrl } from "../lib/utils";
+import { NavBar, inputStyle } from "../components/shared/NavBar";
+import { PageShell } from "../components/shared/PageShell";
+import type { PageType, PageProps } from "../lib/types";
 
 // ═══════════════════════════════════════════════════════════════
 // ABBREVIAZIONI

@@ -1,19 +1,17 @@
 /**
  * COMPONENTE: SpendSearchChart
- *
- * Grafico di correlazione tra:
- * - Spesa settimanale (da Supabase marketing_entries) → barre, asse Y sinistro €
- * - Click organici settimanali (Search Console) → linea, asse Y destro
- * - Click brand settimanali (query con 'leonori') → linea, asse Y destro
- *
- * Feature speciale: toggle "delay 1 settimana" — sposta le linee di ricerca
- * in avanti di una settimana per vedere la correlazione con ritardo.
+ * - Barre spesa settimanale (distribuzione proporzionale, Stampa su data singola)
+ * - Linea click organici Search Console (toggle on/off)
+ * - Linea click brand "leonori" (toggle on/off)
+ * - Asse Y sinistro (€) e destro (click) si adattano ai dati visibili
+ * - Filtro per escludere tipologie di spesa
+ * - Toggle delay 1 settimana per le ricerche
  */
 
 import React, { useState, useMemo } from "react";
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer
+  ComposedChart, Bar, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 import { supabase } from "../../lib/supabase";
 import { TABLE } from "../../lib/constants";
@@ -21,73 +19,72 @@ import { useApiData } from "../../hooks/useApiData";
 
 // ─── TIPI ────────────────────────────────────────────────────────────────────
 interface WeeklyGSC {
-  weekStart: string;
+  weekStart:     string;
   organicClicks: number;
-  brandClicks: number;
+  brandClicks:   number;
 }
-
 interface SpendEntry {
-  data_inizio: string;
-  data_fine: string;
-  spesa: number;
-  tipologia: string;
+  data_inizio:  string;
+  data_fine:    string;
+  spesa:        number;
+  tipologia:    string;
   date_singole: string | null;
 }
 
-// ─── HELPERS SETTIMANA ────────────────────────────────────────────────────────
-
-// Lunedì della settimana di una data
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function getWeekStart(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00"); // mezzogiorno evita problemi DST
-  const day = d.getDay(); // 0=domenica, 1=lunedì, ..., 6=sabato
-  const diff = day === 0 ? -6 : 1 - day; // se domenica torna a lunedì precedente
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
-  // Formatta in YYYY-MM-DD locale senza conversioni timezone
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, "0");
-  const dd = String(monday.getDate()).padStart(2, "0");
+  const d   = new Date(dateStr + "T12:00:00");
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  const y  = mon.getFullYear();
+  const m  = String(mon.getMonth() + 1).padStart(2, "0");
+  const dd = String(mon.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
 
-// Genera tutte le date tra start e end (incluse)
 function dateRange(start: string, end: string): string[] {
   const dates: string[] = [];
-  const cur = new Date(start + "T00:00:00");
-  const fin = new Date(end   + "T00:00:00");
+  const cur = new Date(start + "T12:00:00");
+  const fin = new Date(end   + "T12:00:00");
   while (cur <= fin) {
-    dates.push(cur.toISOString().split("T")[0]);
+    const y  = cur.getFullYear();
+    const m  = String(cur.getMonth() + 1).padStart(2, "0");
+    const dd = String(cur.getDate()).padStart(2, "0");
+    dates.push(`${y}-${m}-${dd}`);
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
 }
 
-// Data N settimane fa
 function weeksAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n * 7);
   return d.toISOString().split("T")[0];
 }
 
-// Formatta la data "2024-01-08" → "08/01"
 function fmtWeek(dateStr: string): string {
   if (!dateStr) return "";
   const [, m, dd] = dateStr.split("-");
   return `${dd}/${m}`;
 }
 
-// ─── AGGREGAZIONE SPESA SETTIMANALE ─────────────────────────────────────────
-function aggregateSpending(entries: SpendEntry[], weeks: number): Record<string, number> {
+// ─── AGGREGAZIONE SPESA ───────────────────────────────────────────────────────
+function aggregateSpending(
+  entries: SpendEntry[],
+  weeks: number,
+  excludedTipologie: Set<string>
+): Record<string, number> {
   const startLimit = weeksAgo(weeks + 1);
   const map: Record<string, number> = {};
 
-  entries.forEach(entry => {
-    const { data_inizio, data_fine, spesa, tipologia, date_singole } = entry;
+  entries.forEach(({ data_inizio, data_fine, spesa, tipologia, date_singole }) => {
+    if (excludedTipologie.has(tipologia)) return;
 
-    // Stampa con date_singole → spesa intera nella settimana di ogni azione
     if (tipologia === "Stampa" && date_singole) {
       const dates = date_singole.split(",").map(d => d.trim()).filter(Boolean);
-      const perDate = spesa / dates.length;
+      const perDate = spesa / (dates.length || 1);
       dates.forEach(date => {
         if (date >= startLimit) {
           const wk = getWeekStart(date);
@@ -97,11 +94,9 @@ function aggregateSpending(entries: SpendEntry[], weeks: number): Record<string,
       return;
     }
 
-    // Tutti gli altri → distribuzione proporzionale sui giorni della campagna
     const allDays = dateRange(data_inizio, data_fine);
-    if (allDays.length === 0) return;
+    if (!allDays.length) return;
     const perDay = spesa / allDays.length;
-
     allDays.forEach(date => {
       if (date >= startLimit) {
         const wk = getWeekStart(date);
@@ -113,17 +108,16 @@ function aggregateSpending(entries: SpendEntry[], weeks: number): Record<string,
   return map;
 }
 
-// ─── FETCH SPESA DA SUPABASE ─────────────────────────────────────────────────
+// ─── FETCH ────────────────────────────────────────────────────────────────────
 async function fetchSpending(weeks: number): Promise<SpendEntry[]> {
   const since = weeksAgo(weeks + 1);
-  const data = await supabase.select(
+  const data  = await supabase.select(
     TABLE,
     `data_fine=gte.${since}&select=data_inizio,data_fine,spesa,tipologia,date_singole&order=data_inizio.asc`
   );
   return data || [];
 }
 
-// ─── FETCH GSC SETTIMANALE ────────────────────────────────────────────────────
 async function fetchGSCWeekly(weeks: number): Promise<WeeklyGSC[]> {
   const url = new URL("/api/search-console/weekly", window.location.origin);
   url.searchParams.set("weeks", String(weeks));
@@ -134,14 +128,12 @@ async function fetchGSCWeekly(weeks: number): Promise<WeeklyGSC[]> {
   return json.data;
 }
 
-// ─── TOOLTIP CUSTOM ──────────────────────────────────────────────────────────
+// ─── TOOLTIP ─────────────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", minWidth: 180 }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>
-        Settimana dal {label}
-      </p>
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", minWidth: 190 }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 8 }}>Settimana dal {label}</p>
       {payload.map((p: any, i: number) => (
         <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 3 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -159,181 +151,217 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+// ─── TOGGLE BUTTON ────────────────────────────────────────────────────────────
+function ToggleBtn({ active, color, label, onClick }: { active: boolean; color: string; label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="btn" style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+      background: active ? color + "18" : "#f8fafc",
+      color:      active ? color       : "#94a3b8",
+      border:     `1.5px solid ${active ? color + "40" : "#e2e8f0"}`,
+      transition: "all .15s ease",
+    }}>
+      <div style={{ width: 10, height: 10, borderRadius: "50%", background: active ? color : "#cbd5e1", transition: "background .15s" }} />
+      {label}
+    </button>
+  );
+}
+
 // ─── COMPONENTE PRINCIPALE ────────────────────────────────────────────────────
 export default function SpendSearchChart() {
   const WEEKS = 12;
-  const [delay, setDelay] = useState(false);
 
-  // Fetch paralleli
-  const { data: gscData, loading: loadGsc } = useApiData(
-    () => fetchGSCWeekly(WEEKS), []
-  );
-  const { data: spendData, loading: loadSpend } = useApiData(
-    () => fetchSpending(WEEKS), []
-  );
+  const [showOrganic, setShowOrganic] = useState(true);
+  const [showBrand,   setShowBrand]   = useState(true);
+  const [delay,       setDelay]       = useState(false);
+  const [excludedTip, setExcludedTip] = useState<Set<string>>(new Set());
 
-  // Aggrega spesa settimanale
-  const spendMap = useMemo(() => {
-    if (!spendData) return {};
-    return aggregateSpending(spendData as SpendEntry[], WEEKS);
+  const toggleTipologia = (tip: string) => {
+    setExcludedTip(prev => {
+      const next = new Set(prev);
+      next.has(tip) ? next.delete(tip) : next.add(tip);
+      return next;
+    });
+  };
+
+  const { data: gscData,   loading: loadGsc   } = useApiData(() => fetchGSCWeekly(WEEKS), []);
+  const { data: spendData, loading: loadSpend } = useApiData(() => fetchSpending(WEEKS),   []);
+
+  // Tipologie presenti nei dati
+  const availableTip = useMemo(() => {
+    if (!spendData) return [] as string[];
+    return Array.from(new Set((spendData as SpendEntry[]).map(e => e.tipologia))).sort();
   }, [spendData]);
 
-  // Costruisce il dataset per il grafico
-  const chartData = useMemo(() => {
-    const gscArr = (gscData as WeeklyGSC[]) || [];
-    if (!gscArr.length && !Object.keys(spendMap).length) return [];
+  // Aggrega con filtro
+  const spendMap = useMemo(() => {
+    if (!spendData) return {};
+    return aggregateSpending(spendData as SpendEntry[], WEEKS, excludedTip);
+  }, [spendData, excludedTip]);
 
-    // Usa i weekStart del GSC come riferimento — sono già le ultime 12 settimane
-    // Se GSC non è ancora caricato, usa le settimane dalla spesa
+  // Dataset
+  const chartData = useMemo(() => {
+    const gscArr   = (gscData as WeeklyGSC[]) || [];
     const weekKeys = gscArr.length > 0
       ? gscArr.map(r => r.weekStart).sort()
       : Array.from(new Set(Object.keys(spendMap))).sort().slice(-WEEKS);
+    if (!weekKeys.length) return [];
 
-    // Mappa GSC per weekStart
     const gscMap: Record<string, WeeklyGSC> = {};
     gscArr.forEach(r => { gscMap[r.weekStart] = r; });
 
-    // Per la spesa: cerca la settimana corrispondente
-    // (i weekStart GSC sono lunedì, quelli della spesa anche — devono coincidere)
     return weekKeys.map((wk, i) => {
-      const gsc = delay
-        ? gscMap[weekKeys[i - 1]]
-        : gscMap[wk];
-
-      // Cerca la spesa nella stessa settimana o nella più vicina
-      const spesa = spendMap[wk] || 0;
-
+      const gsc = delay ? gscMap[weekKeys[i - 1]] : gscMap[wk];
       return {
-        weekStart:     wk,
         label:         fmtWeek(wk),
-        spesa:         Math.round(spesa * 100) / 100,
+        spesa:         Math.round((spendMap[wk] || 0) * 100) / 100,
         organicClicks: gsc?.organicClicks ?? null,
         brandClicks:   gsc?.brandClicks   ?? null,
       };
     });
   }, [gscData, spendMap, delay]);
 
+  // Domain assi adattivi
+  const spendMax = useMemo(() =>
+    Math.max(...chartData.map(d => d.spesa || 0), 1),
+  [chartData]);
+
+  const clicksMax = useMemo(() => {
+    const vals: number[] = [];
+    if (showOrganic) chartData.forEach(d => d.organicClicks && vals.push(d.organicClicks));
+    if (showBrand)   chartData.forEach(d => d.brandClicks   && vals.push(d.brandClicks));
+    return Math.max(...vals, 1);
+  }, [chartData, showOrganic, showBrand]);
+
   const loading = loadGsc || loadSpend;
 
   return (
     <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,.06)", border: "1px solid #e2e8f0" }}>
+
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
-            Correlazione Spesa ↔ Ricerche
-          </h3>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Correlazione Spesa ↔ Ricerche</h3>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b" }}>
-            Spesa settimanale vs click organici e ricerche brand · ultime {WEEKS} settimane
+            Spesa settimanale vs click organici e brand · ultime {WEEKS} settimane
           </p>
         </div>
-
-        {/* Toggle delay */}
-        <button
-          onClick={() => setDelay(d => !d)}
-          className="btn"
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "6px 14px", borderRadius: 8, fontSize: 12,
-            background: delay ? "#1e293b" : "#f1f5f9",
-            color:      delay ? "#fff"    : "#475569",
-            border: "1px solid " + (delay ? "#1e293b" : "#e2e8f0"),
-            transition: "all .15s ease",
-          }}
-        >
-          <span style={{ fontSize: 14 }}>⏱</span>
-          {delay ? "Delay 1 sett. attivo" : "Attiva delay 1 sett."}
+        <button onClick={() => setDelay(d => !d)} className="btn" style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
+          borderRadius: 8, fontSize: 12,
+          background: delay ? "#1e293b" : "#f1f5f9",
+          color:      delay ? "#fff"    : "#475569",
+          border:     `1px solid ${delay ? "#1e293b" : "#e2e8f0"}`,
+        }}>
+          ⏱ {delay ? "Delay 1 sett. attivo" : "Attiva delay 1 sett."}
         </button>
       </div>
 
+      {/* Controlli */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid #f1f5f9" }}>
+
+        {/* Toggle linee ricerca */}
+        <ToggleBtn active={showOrganic} color="#3b82f6" label="Click organici"   onClick={() => setShowOrganic(v => !v)} />
+        <ToggleBtn active={showBrand}   color="#f59e0b" label='Brand "leonori"'  onClick={() => setShowBrand(v => !v)} />
+
+        {availableTip.length > 0 && (
+          <>
+            <div style={{ width: 1, height: 24, background: "#e2e8f0", margin: "0 4px" }} />
+            <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".3px" }}>
+              Escludi spesa:
+            </span>
+            {availableTip.map(tip => {
+              const excluded = excludedTip.has(tip);
+              return (
+                <button key={tip} onClick={() => toggleTipologia(tip)} className="btn" style={{
+                  padding: "4px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                  background: excluded ? "#fef2f2" : "#f8fafc",
+                  color:      excluded ? "#e11d48" : "#475569",
+                  border:     `1.5px solid ${excluded ? "#fecdd3" : "#e2e8f0"}`,
+                  textDecoration: excluded ? "line-through" : "none",
+                  transition: "all .15s ease",
+                }}>
+                  {tip}
+                </button>
+              );
+            })}
+          </>
+        )}
+      </div>
+
+      {/* Grafico */}
       {loading ? (
-        <div style={{ height: 320, background: "#f1f5f9", borderRadius: 8, animation: "pulse 1.5s infinite" }} />
+        <div style={{ height: 300, background: "#f1f5f9", borderRadius: 8 }} />
       ) : (
         <>
-          {/* Legenda assi */}
-          <div style={{ display: "flex", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#64748b" }}>
-              <div style={{ width: 12, height: 12, borderRadius: 2, background: "#cbd5e1" }} />
-              <span>Spesa (€ — asse sx)</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#64748b" }}>
-              <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#3b82f6" }} />
-              <span>Click organici (asse dx)</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#64748b" }}>
-              <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#f59e0b" }} />
-              <span>Click brand "leonori" (asse dx){delay ? " — ritardato 1 sett." : ""}</span>
-            </div>
-          </div>
-
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 50, bottom: 4, left: 10 }}>
+          <ResponsiveContainer width="100%" height={300}>
+            <ComposedChart data={chartData} margin={{ top: 4, right: 55, bottom: 4, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis
-                dataKey="label"
+              <XAxis dataKey="label"
                 tick={{ fontSize: 11, fill: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}
                 axisLine={false} tickLine={false}
               />
-              {/* Asse Y sinistro — spesa € */}
-              <YAxis
-                yAxisId="spend"
-                orientation="left"
+              {/* Asse Y sx — spesa adattiva */}
+              <YAxis yAxisId="spend" orientation="left"
+                domain={[0, Math.ceil(spendMax * 1.15 / 1000) * 1000]}
                 tick={{ fontSize: 10, fill: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}
-                axisLine={false} tickLine={false} width={60}
+                axisLine={false} tickLine={false} width={62}
                 tickFormatter={v => v >= 1000 ? `€${(v/1000).toFixed(0)}k` : `€${v}`}
               />
-              {/* Asse Y destro — click */}
-              <YAxis
-                yAxisId="clicks"
-                orientation="right"
-                tick={{ fontSize: 10, fill: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}
-                axisLine={false} tickLine={false} width={55}
-                tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)}
-              />
+              {/* Asse Y dx — click adattivo, visibile solo se almeno una linea è attiva */}
+              {(showOrganic || showBrand) && (
+                <YAxis yAxisId="clicks" orientation="right"
+                  domain={[0, Math.ceil(clicksMax * 1.15 / 1000) * 1000]}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontFamily: "'DM Sans', sans-serif" }}
+                  axisLine={false} tickLine={false} width={52}
+                  tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)}
+                />
+              )}
               <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
 
-              {/* Barre spesa */}
-              <Bar
-                yAxisId="spend"
-                dataKey="spesa"
-                name="Spesa €"
-                fill="#e2e8f0"
-                radius={[3, 3, 0, 0]}
-                maxBarSize={32}
-              />
-              {/* Linea click organici */}
-              <Line
-                yAxisId="clicks"
-                type="monotone"
-                dataKey="organicClicks"
-                name="Click organici"
-                stroke="#3b82f6"
-                strokeWidth={2.5}
-                dot={false}
-                activeDot={{ r: 4, fill: "#3b82f6", stroke: "#fff", strokeWidth: 2 }}
-                connectNulls={false}
-              />
-              {/* Linea click brand */}
-              <Line
-                yAxisId="clicks"
-                type="monotone"
-                dataKey="brandClicks"
-                name='Click brand "leonori"'
-                stroke="#f59e0b"
-                strokeWidth={2.5}
-                dot={false}
-                activeDot={{ r: 4, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2 }}
-                connectNulls={false}
-              />
+              <Bar yAxisId="spend" dataKey="spesa" name="Spesa €"
+                fill="#e2e8f0" radius={[3, 3, 0, 0]} maxBarSize={32} />
+
+              {showOrganic && (
+                <Line yAxisId="clicks" type="monotone" dataKey="organicClicks"
+                  name="Click organici" stroke="#3b82f6" strokeWidth={2.5}
+                  dot={false} activeDot={{ r: 4, fill: "#3b82f6", stroke: "#fff", strokeWidth: 2 }}
+                  connectNulls={false} />
+              )}
+              {showBrand && (
+                <Line yAxisId="clicks" type="monotone" dataKey="brandClicks"
+                  name='Brand "leonori"' stroke="#f59e0b" strokeWidth={2.5}
+                  dot={false} activeDot={{ r: 4, fill: "#f59e0b", stroke: "#fff", strokeWidth: 2 }}
+                  connectNulls={false} />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
 
-          {/* Note */}
-          {delay && (
-            <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, textAlign: "center" }}>
-              ⏱ Le ricerche mostrate sono quelle della settimana precedente rispetto alla spesa — per valutare l'effetto ritardato
-            </p>
-          )}
+          {/* Legenda */}
+          <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: "#e2e8f0" }} />
+              Spesa (€ — asse sx)
+              {excludedTip.size > 0 && (
+                <span style={{ color: "#e11d48", fontWeight: 600 }}>
+                  · escluso: {Array.from(excludedTip).join(", ")}
+                </span>
+              )}
+            </div>
+            {showOrganic && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
+                <div style={{ width: 14, height: 2.5, borderRadius: 2, background: "#3b82f6" }} />
+                Click organici (asse dx)
+              </div>
+            )}
+            {showBrand && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
+                <div style={{ width: 14, height: 2.5, borderRadius: 2, background: "#f59e0b" }} />
+                Brand "leonori" (asse dx){delay ? " · ritardo 1 sett." : ""}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -176,25 +176,28 @@ export default function SpendSearchChart() {
 
   // Costruisce il dataset per il grafico
   const chartData = useMemo(() => {
-    if (!gscData) return [];
+    const gscArr = (gscData as WeeklyGSC[]) || [];
 
-    const gscArr = gscData as WeeklyGSC[];
+    // Settimana corrente (lunedì di questa settimana) — limite superiore
+    const todayWeek = getWeekStart(new Date().toISOString().split("T")[0]);
 
-    // Tutte le settimane uniche (spesa + GSC)
-    const allWeeks = new Set<string>([
-      ...Object.keys(spendMap),
-      ...gscArr.map(r => r.weekStart),
-    ]);
-
-    const sorted = Array.from(allWeeks).sort().slice(-WEEKS);
+    // Prende solo settimane PASSATE (fino a oggi) dagli ultimi WEEKS lunedì
+    const weekKeys: string[] = [];
+    for (let i = WEEKS - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i * 7);
+      const wk = getWeekStart(d.toISOString().split("T")[0]);
+      if (wk <= todayWeek && !weekKeys.includes(wk)) weekKeys.push(wk);
+    }
+    weekKeys.sort();
 
     // Mappa GSC per weekStart
     const gscMap: Record<string, WeeklyGSC> = {};
     gscArr.forEach(r => { gscMap[r.weekStart] = r; });
 
-    return sorted.map((wk, i) => {
+    return weekKeys.map((wk, i) => {
       const gsc = delay
-        ? gscMap[sorted[i - 1]] // delay: usa dati GSC della settimana precedente
+        ? gscMap[weekKeys[i - 1]] // delay: usa dati GSC della settimana precedente
         : gscMap[wk];
 
       return {

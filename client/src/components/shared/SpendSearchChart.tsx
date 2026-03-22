@@ -177,33 +177,32 @@ export default function SpendSearchChart() {
   // Costruisce il dataset per il grafico
   const chartData = useMemo(() => {
     const gscArr = (gscData as WeeklyGSC[]) || [];
+    if (!gscArr.length && !Object.keys(spendMap).length) return [];
 
-    // Settimana corrente (lunedì di questa settimana) — limite superiore
-    const todayWeek = getWeekStart(new Date().toISOString().split("T")[0]);
-
-    // Prende solo settimane PASSATE (fino a oggi) dagli ultimi WEEKS lunedì
-    const weekKeys: string[] = [];
-    for (let i = WEEKS - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i * 7);
-      const wk = getWeekStart(d.toISOString().split("T")[0]);
-      if (wk <= todayWeek && !weekKeys.includes(wk)) weekKeys.push(wk);
-    }
-    weekKeys.sort();
+    // Usa i weekStart del GSC come riferimento — sono già le ultime 12 settimane
+    // Se GSC non è ancora caricato, usa le settimane dalla spesa
+    const weekKeys = gscArr.length > 0
+      ? gscArr.map(r => r.weekStart).sort()
+      : Array.from(new Set(Object.keys(spendMap))).sort().slice(-WEEKS);
 
     // Mappa GSC per weekStart
     const gscMap: Record<string, WeeklyGSC> = {};
     gscArr.forEach(r => { gscMap[r.weekStart] = r; });
 
+    // Per la spesa: cerca la settimana corrispondente
+    // (i weekStart GSC sono lunedì, quelli della spesa anche — devono coincidere)
     return weekKeys.map((wk, i) => {
       const gsc = delay
-        ? gscMap[weekKeys[i - 1]] // delay: usa dati GSC della settimana precedente
+        ? gscMap[weekKeys[i - 1]]
         : gscMap[wk];
+
+      // Cerca la spesa nella stessa settimana o nella più vicina
+      const spesa = spendMap[wk] || 0;
 
       return {
         weekStart:     wk,
         label:         fmtWeek(wk),
-        spesa:         Math.round((spendMap[wk] || 0) * 100) / 100,
+        spesa:         Math.round(spesa * 100) / 100,
         organicClicks: gsc?.organicClicks ?? null,
         brandClicks:   gsc?.brandClicks   ?? null,
       };

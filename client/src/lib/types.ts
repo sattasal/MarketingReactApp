@@ -1,4 +1,7 @@
-export type PageType = "marketing" | "ooh" | "collettive" | "piani-extra" | "timeline" | "creativita" | "lead-contratti" | "budget" | "reach";
+export type PageType =
+  | "marketing" | "ooh" | "collettive" | "piani-extra"
+  | "timeline" | "creativita" | "lead-contratti" | "budget" | "reach"
+  | "dashboard";
 
 export interface PageProps {
   onNavigate: (p: PageType) => void;

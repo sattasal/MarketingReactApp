@@ -3,19 +3,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, Cell
 } from "recharts";
-
-// 1. Le importazioni dalla cartella LIB (logica)
-import { supabase } from "../lib/supabase";
-import { TABLE, BRANDS, STORAGE_BUCKET, MAX_FILE_SIZE } from "../lib/constants";
-import { formatEur, getMonthKey } from "../lib/utils";
-import type { PageProps } from "../lib/types";
-
-// 2. Le importazioni dalla cartella COMPONENTS/SHARED (grafica)
-import { PageShell } from "../components/shared/PageShell";
-import { NavBar, inputStyle } from "../components/shared/NavBar";
-
-
-const today = new Date().toISOString().split('T')[0];
+import {
+  supabase, TABLE, TIPOLOGIE, BRANDS, STORAGE_BUCKET, MAX_FILE_SIZE,
+  formatEur, getMonthKey, getCurrentMonthKey, today, inputStyle,
+  PageShell, NavBar, parseCreativitaFiles, isImageUrl,
+  type PageType, type PageProps
+} from "../App";
 
 // ═══════════════════════════════════════════════════════════════
 // ABBREVIAZIONI
@@ -188,6 +181,14 @@ function stampaHeatColor(v: number, mn: number, mx: number): string {
   return `rgb(${Math.round(10+t*5)},${Math.round(20+t*191)},${Math.round(30+t*123)})`;
 }
 
+// Legacy compat (used by OOH import modal)
+function stampaReachCarta(testata: typeof STAMPA_TESTATE[0], N: number, visWeight: number): number {
+  if(N===0) return 0;
+  const L=testata.copieRoma*testata.moltiplicatoreC, U=L/DAILY_PROB_S;
+  const pA=Math.min(PA_S,1), pO=Math.min(PO_S,1);
+  return (U*testata.alpha*(1-Math.pow(1-pA,N))+U*(1-testata.alpha)*(1-Math.pow(1-pO,N)))*visWeight;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MODELLO OOH
 // ═══════════════════════════════════════════════════════════════
@@ -250,6 +251,7 @@ function oohCombinedReach(boards: {reach:number;lat:number;lon:number}[]): numbe
   }
   return Math.round(Math.min(tot, P_OOH));
 }
+// Infers road class from a road name string (Italian street nomenclature)
 function oohInferRoadClassFromName(name: string): string {
   if (!name) return "_default";
   const n = name.toLowerCase();
@@ -267,7 +269,7 @@ async function oohEnrichBillboard(lat: number, lon: number, roadNameHint?: strin
 
   let lastErr: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await sleep(1500 * attempt);
+    if (attempt > 0) await sleep(1500 * attempt); // backoff: 1.5s, 3s
     try {
       const res = await fetch("https://overpass-api.de/api/interpreter", {
         method: "POST", body: "data=" + encodeURIComponent(query),
@@ -287,6 +289,7 @@ async function oohEnrichBillboard(lat: number, lon: number, roadNameHint?: strin
           if (t.shop || ["restaurant", "cafe", "bar", "fast_food"].includes(t.amenity)) commercialCount++;
         }
       }
+      // Fallback: if OSM didn't find a road, use the hint from the CSV address
       if (roadClass === "_default" && roadNameHint) {
         roadClass = oohInferRoadClassFromName(roadNameHint);
         roadName = roadNameHint;
@@ -297,6 +300,7 @@ async function oohEnrichBillboard(lat: number, lon: number, roadNameHint?: strin
       return { ...ctx, flusso: Math.round(fe), reach };
     } catch (err) { lastErr = err instanceof Error ? err : new Error(String(err)); }
   }
+  // All retries failed — use road name hint as last resort
   if (roadNameHint) {
     const roadClass = oohInferRoadClassFromName(roadNameHint);
     const ctx = { roadClass, roadName: roadNameHint, hasTrafficLight: false, hasBusStop: false, hasMetroTram: false, hasSchool: false, isCommercial: false };
@@ -314,6 +318,7 @@ function oohParseCSV(text: string) {
   const headers=lines[0].split(sep).map((h: string)=>h.trim().toLowerCase().replace(/['"]/g,""));
   const find=(...keys: string[])=>headers.findIndex((h: string)=>keys.some(k=>h.includes(k)));
   const iLat=find("lat","latitude","latitudine"), iLon=find("long","lon","lng","longitude","longitudine");
+  // Detect new rich format (modello_indirizzi) vs basic format
   const iUbicazione=find("ubicazione","indirizzo");
   const iCimasa=find("cimasa","codice","id","impianto");
   const iFormatoReale=find("formato reale","formato_reale");
@@ -325,6 +330,7 @@ function oohParseCSV(text: string) {
     const cols=line.split(sep).map((c: string)=>c.trim().replace(/^["']|["']$/g,""));
     const lat=parseDec(cols[iLat]),lon=parseDec(cols[iLon]);
     if(isNaN(lat)||isNaN(lon))return null;
+    // Build nome: prefer UBICAZIONE + DESCRIZIONE combo, else fallback
     let nome="Cartello "+(i+1), ubicazione="", formato="";
     if(iUbicazione>=0&&cols[iUbicazione]) {
       ubicazione=cols[iUbicazione];
@@ -334,6 +340,7 @@ function oohParseCSV(text: string) {
     } else if(iNome>=0&&cols[iNome]) {
       nome=cols[iNome];
     }
+    // Format: prefer FORMATO REALE, else DESCRIZIONE if available, else empty
     if(iFormatoReale>=0&&cols[iFormatoReale]) formato=cols[iFormatoReale];
     else if(iDesc>=0&&iUbicazione<0&&cols[iDesc]) formato=cols[iDesc];
     return{id:i+1,nome,ubicazione,formato,lat,lon,status:"pending" as string,enriched:null as any};
@@ -355,6 +362,10 @@ const fmtN = (n: number) => new Intl.NumberFormat("it-IT").format(Math.round(n))
 const pctOf = (n: number, tot: number) => ((n/tot)*100).toFixed(1)+"%";
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+const cardStyle: React.CSSProperties = {
+  background:"#fff", borderRadius:14, padding:"22px 24px",
+  boxShadow:"0 2px 8px rgba(0,0,0,.06)", border:"1px solid #e8ecf1",
+};
 const kpiStyle = (bg: string): React.CSSProperties => ({
   background:bg, borderRadius:12, padding:"20px 22px", textAlign:"center" as const,
   boxShadow:"0 1px 4px rgba(0,0,0,.04)", border:"1px solid #e8ecf1",
@@ -391,6 +402,7 @@ function ImportToMarketingModal({ items, onClose, onDone, title }: {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Upload files
       let creativita_url: string | null = null, creativita_nome: string | null = null;
       if (files.length > 0) {
         const urls: string[] = [], names: string[] = [];
@@ -431,6 +443,7 @@ function ImportToMarketingModal({ items, onClose, onDone, title }: {
         <h2 style={{fontSize:18,fontWeight:700,margin:"0 0 6px"}}>📊 {title}</h2>
         <p style={{fontSize:13,color:"#64748b",margin:"0 0 16px"}}>{items.length} {items.length===1?"voce":"voci"} da importare nei Costi Marketing</p>
 
+        {/* Riepilogo */}
         <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:12}}>
           {items.map((it, i) => (
             <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:i<items.length-1?"1px solid #e8ecf1":"none"}}>
@@ -461,6 +474,7 @@ function ImportToMarketingModal({ items, onClose, onDone, title }: {
           </div>
         </div>
 
+        {/* Creativita */}
         <div style={{marginBottom:16}}>
           <label style={{display:"block",fontSize:13,fontWeight:700,color:"#64748b",marginBottom:6,textTransform:"uppercase"}}>Creativita (opzionale)</label>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -489,7 +503,7 @@ function ImportToMarketingModal({ items, onClose, onDone, title }: {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CSS DARK PANELS
+// CSS DARK PANELS (shared by Radio + Stampa tabs)
 // ═══════════════════════════════════════════════════════════════
 const DARK_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap');
@@ -544,6 +558,7 @@ const DARK_CSS = `
 .rr-sstat{text-align:center}
 .rr-sstat-lbl{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#334155}
 .rr-sstat-sub{font-size:9px;color:#1e2d45;margin-bottom:4px}
+/* Stampa specific */
 .rr-rbtn{display:flex;align-items:flex-start;gap:8px;padding:9px;border-radius:8px;cursor:pointer;transition:all .15s;text-align:left;width:100%;margin-bottom:5px}
 .rr-rbtn:hover:not(:disabled){border-color:#a8a8a0!important;background:#c7c6c1!important}
 .rr-rbtn:disabled{opacity:.35;cursor:not-allowed}
@@ -553,6 +568,7 @@ const DARK_CSS = `
 .rr-dig-tog{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
 .rr-dsw{width:30px;height:16px;border-radius:9px;background:#131d35;border:1px solid #1a2540;position:relative;transition:background .2s;flex-shrink:0}
 .rr-dknob{width:10px;height:10px;border-radius:50%;background:#475569;position:absolute;top:2px;left:2px;transition:all .2s}
+/* Stampa day×format grid */
 .rr-dftbl{width:100%;border-collapse:separate;border-spacing:3px;margin-top:6px}
 .rr-dftbl th{font-size:9px;font-weight:700;text-align:center;padding:3px 2px;letter-spacing:.4px;text-transform:uppercase}
 .rr-day-h{text-align:left;padding-left:2px;color:#334155;white-space:nowrap;font-size:9px;font-weight:400}
@@ -1473,7 +1489,7 @@ function OOHTab({ showToast }: { showToast: (m: string)=>void }) {
       } catch { updated[i] = {...updated[i], status:"error", enriched:null}; }
       setProgress(Math.round(((i+1)/updated.length)*100));
       setBillboards([...updated]);
-      if (i<updated.length-1) await sleep(1800);
+      if (i<updated.length-1) await sleep(1800); // 1.8s delay to avoid rate limiting
     }
     setPhase("results");
   };

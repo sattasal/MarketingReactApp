@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { PageType } from "../../lib/types";
 import { verifyPin } from "../../lib/utils";
 
-// Esportiamo questo stile qui così potrai importarlo anche nelle altre pagine
 export const inputStyle: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 14, color: "#1e293b", background: "#f8fafc", transition: "all .15s ease", boxSizing: "border-box" };
 
 export function NavBar({ current, onNavigate, unlocked, setUnlocked }: { current: PageType; onNavigate: (p: PageType) => void; unlocked: boolean; setUnlocked: (v: boolean) => void }) {
@@ -12,15 +11,16 @@ export function NavBar({ current, onNavigate, unlocked, setUnlocked }: { current
   const [pinChecking, setPinChecking] = useState(false);
 
   const tabs: { key: PageType; label: string; icon: string }[] = [
-    { key: "marketing", label: "Costi Marketing", icon: "📊" },
-    { key: "collettive", label: "Collettive", icon: "🤝" },
-    { key: "piani-extra", label: "Piani Extra", icon: "📌" },
-    { key: "ooh", label: "Campagne OOH", icon: "🏙" },
-    { key: "timeline", label: "Timeline", icon: "📅" },
-    { key: "creativita", label: "Creatività", icon: "🖼" },
+    { key: "marketing",      label: "Costi Marketing",  icon: "📊" },
+    { key: "collettive",     label: "Collettive",        icon: "🤝" },
+    { key: "piani-extra",    label: "Piani Extra",       icon: "📌" },
+    { key: "ooh",            label: "Campagne OOH",      icon: "🏙" },
+    { key: "timeline",       label: "Timeline",          icon: "📅" },
+    { key: "creativita",     label: "Creatività",        icon: "🖼" },
     { key: "lead-contratti", label: "Lead ↔ Contratti", icon: "🔗" },
-    { key: "budget", label: "Budget", icon: "💰" },
-    { key: "reach", label: "Reach", icon: "📡" },
+    { key: "budget",         label: "Budget",            icon: "💰" },
+    { key: "reach",          label: "Reach",             icon: "📡" },
+    { key: "dashboard",      label: "Dashboard",         icon: "🌐" },
   ];
 
   const handlePinSubmit = async () => {

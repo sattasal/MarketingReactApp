@@ -1,12 +1,15 @@
 import * as XLSX from "xlsx";
-import { STAGE_ID, MEDIA_COLORS, MESI, MESI_SHORT, BRAND_COLORS, OFFLINE_TYPES, META_KNOWN_BRANDS, META_CLEANUP, META_MYUSATO, GOOGLE_MYUSATO, GOOGLE_CLEANUP_CAMPAIGN, IT_MONTHS_MAP, LC_AGENTI_ESCLUSI } from "./constants";
+import { MEDIA_COLORS, MESI, MESI_SHORT, BRAND_COLORS, OFFLINE_TYPES, META_KNOWN_BRANDS, META_CLEANUP, META_MYUSATO, GOOGLE_MYUSATO, GOOGLE_CLEANUP_CAMPAIGN, IT_MONTHS_MAP, LC_AGENTI_ESCLUSI } from "./constants";
 import { Entry, CsvImportRow, LCContratto, LCLead, LCDashRow } from "./types";
 
 export async function verifyPin(pin: string): Promise<boolean> {
-  const enc = new TextEncoder().encode(pin);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return hex === STAGE_ID;
+  const res = await fetch("/api/verify-pin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  });
+  const json = await res.json();
+  return json.ok === true;
 }
 
 export function parseCreativitaFiles(url: string | null, nome: string | null): { url: string; nome: string }[] {

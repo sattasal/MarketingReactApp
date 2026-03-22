@@ -16,19 +16,7 @@ export default function PianiExtraPage({ onNavigate, unlocked, setUnlocked }: Pa
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterYear, setFilterYear] = useState<string>("all");
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    try { const s = localStorage.getItem("pianiextra_collapsed"); return s ? new Set(JSON.parse(s)) : new Set(); }
-    catch { return new Set(); }
-  });
-
-  const toggleCollapse = (key: string) => {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      try { localStorage.setItem("pianiextra_collapsed", JSON.stringify([...next])); } catch {}
-      return next;
-    });
-  };
+  const [filterBrand, setFilterBrand] = useState<string>("all");
 
   useEffect(() => {
     supabase.select(TABLE, "piano_extra=eq.true&order=data_inizio.asc")
@@ -65,15 +53,10 @@ export default function PianiExtraPage({ onNavigate, unlocked, setUnlocked }: Pa
 
       {groups.map(brandName => {
         const ge = filtered.filter(e => e.brand === brandName);
-        const isCollapsed = collapsed.has(brandName);
         return (
-          <div key={brandName} style={{ marginBottom: 16, background: "#fff", border: "1px solid #e8ecf1", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer", background: isCollapsed ? "#f8fafc" : "#fff", borderBottom: isCollapsed ? "none" : "1px solid #e8ecf1" }} onClick={() => toggleCollapse(brandName)}>
-              <span style={{ fontSize: 13, color: "#94a3b8", transition: "transform .2s", display: "inline-block", transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▼</span>
-              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📌 {brandName}</h2>
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>{ge.length} azioni</span>
-            </div>
-            {!isCollapsed && (
+          <div key={brandName} style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 12px" }}>📌 {brandName}</h2>
+            <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1px solid #e8ecf1" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <tbody>
                   {ge.map(e => (
@@ -86,7 +69,7 @@ export default function PianiExtraPage({ onNavigate, unlocked, setUnlocked }: Pa
                   ))}
                 </tbody>
               </table>
-            )}
+            </div>
           </div>
         );
       })}

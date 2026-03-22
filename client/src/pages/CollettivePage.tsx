@@ -77,20 +77,8 @@ export default function CollettivePage({ onNavigate, unlocked, setUnlocked }: Pa
   const [filterYear, setFilterYear] = useState<string>("all");
   const [filterBrand, setFilterBrand] = useState<string>("all");
   const [filterNome, setFilterNome] = useState<string>("all");
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    try { const s = localStorage.getItem("collettive_collapsed"); return s ? new Set(JSON.parse(s)) : new Set(); }
-    catch { return new Set(); }
-  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [mapEntry, setMapEntry] = useState<Entry | null>(null);
-
-  const toggleCollapse = (groupName: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupName)) next.delete(groupName); else next.add(groupName);
-      try { localStorage.setItem("collettive_collapsed", JSON.stringify([...next])); } catch {}
-      return next;
-    });
-  };
 
   useEffect(() => {
     supabase.select(TABLE, "collettiva=eq.true&order=data_inizio.asc")
@@ -130,33 +118,26 @@ export default function CollettivePage({ onNavigate, unlocked, setUnlocked }: Pa
       {groups.map(groupName => {
         const ge = filtered.filter(e => (e.nome_collettiva || "Senza nome") === groupName);
         const groupMonths = Array.from(new Set(ge.map(e => e.meseCompetenza))).sort();
-        const isCollapsed = collapsedGroups.has(groupName);
         return (
-          <div key={groupName} style={{ marginBottom: 24, background: "#fff", border: "1px solid #e8ecf1", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer", background: isCollapsed ? "#f8fafc" : "#fff", borderBottom: isCollapsed ? "none" : "1px solid #e8ecf1" }} onClick={() => toggleCollapse(groupName)}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 13, color: "#94a3b8", transition: "transform .2s", display: "inline-block", transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}>▼</span>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>{groupName}</h2>
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>{ge.length} azioni</span>
-              </div>
-              <button className="btn" onClick={e => { e.stopPropagation(); downloadPianoCollettiva(groupName, ge); }} style={{ background: "#7c3aed", color: "#fff", padding: "4px 10px", borderRadius: 6 }}>📥 Scarica Piano</button>
+          <div key={groupName} style={{ marginBottom: 24, background: "#fff", border: "1px solid #e8ecf1", borderRadius: 12, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700 }}>{groupName}</h2>
+              <button className="btn" onClick={() => downloadPianoCollettiva(groupName, ge)} style={{ background: "#7c3aed", color: "#fff", padding: "4px 10px", borderRadius: 6 }}>📥 Scarica Piano</button>
             </div>
-            {!isCollapsed && (
-              <div style={{ padding: 16 }}>
-                {groupMonths.map(mk => <MiniGantt key={mk} entries={ge} monthKey={mk} />)}
-                <table style={{ width: "100%", marginTop: 16, borderCollapse: "collapse", fontSize: 13 }}>
-                  <tbody>
-                    {ge.map(e => (
-                      <tr key={e.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                        <td style={cellStyle}>{e.descrizione}</td>
-                        <td style={cellStyle}>{e.brand}</td>
-                        <td style={{ ...cellStyle, textAlign: "right", color: "#059669", fontWeight: 600 }}>{formatEur(calcSpesaNetta(e))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            
+            {groupMonths.map(mk => <MiniGantt key={mk} entries={ge} monthKey={mk} />)}
+            
+            <table style={{ width: "100%", marginTop: 16, borderCollapse: "collapse", fontSize: 13 }}>
+              <tbody>
+                {ge.map(e => (
+                  <tr key={e.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={cellStyle}>{e.descrizione}</td>
+                    <td style={cellStyle}>{e.brand}</td>
+                    <td style={{ ...cellStyle, textAlign: "right", color: "#059669", fontWeight: 600 }}>{formatEur(calcSpesaNetta(e))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         );
       })}

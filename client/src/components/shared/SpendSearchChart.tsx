@@ -174,7 +174,7 @@ export default function SpendSearchChart() {
 
   const [showOrganic, setShowOrganic] = useState(true);
   const [showBrand,   setShowBrand]   = useState(true);
-  const [delay,       setDelay]       = useState(false);
+  const [delay, setDelay] = useState(0); // 0 = nessun delay, 1 = 1 sett., 2 = 2 sett.
   const [excludedTip, setExcludedTip] = useState<Set<string>>(new Set());
 
   const toggleTipologia = (tip: string) => {
@@ -212,7 +212,7 @@ export default function SpendSearchChart() {
     gscArr.forEach(r => { gscMap[r.weekStart] = r; });
 
     return weekKeys.map((wk, i) => {
-      const gsc = delay ? gscMap[weekKeys[i - 1]] : gscMap[wk];
+      const gsc = delay > 0 ? gscMap[weekKeys[i - delay]] : gscMap[wk];
       return {
         label:         fmtWeek(wk),
         spesa:         Math.round((spendMap[wk] || 0) * 100) / 100,
@@ -247,13 +247,18 @@ export default function SpendSearchChart() {
             Spesa settimanale vs click organici e brand · ultime {WEEKS} settimane
           </p>
         </div>
-        <button onClick={() => setDelay(d => !d)} className="btn" style={{
-          display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-          borderRadius: 8, fontSize: 12,
-          background: delay ? "#1e293b" : "#f1f5f9",
-          color:      delay ? "#fff"    : "#475569",
-          border:     `1px solid ${delay ? "#1e293b" : "#e2e8f0"}`,
-        }}>
+		<div style={{ display: "flex", gap: 4, background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
+		  {[{ val: 0, label: "Nessun delay" }, { val: 1, label: "Delay 1 sett." }, { val: 2, label: "Delay 2 sett." }].map(({ val, label }) => (
+			<button key={val} onClick={() => setDelay(val)} className="btn" style={{
+			  padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+			  background: delay === val ? "#1e293b" : "transparent",
+			  color:      delay === val ? "#fff"    : "#64748b",
+			  boxShadow:  delay === val ? "0 1px 4px rgba(0,0,0,.1)" : "none",
+			}}>
+			  {val === 0 ? "⏱ " : ""}{label}
+			</button>
+		  ))}
+		</div>
           ⏱ {delay ? "Delay 1 sett. attivo" : "Attiva delay 1 sett."}
         </button>
       </div>
@@ -358,7 +363,7 @@ export default function SpendSearchChart() {
             {showBrand && (
               <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
                 <div style={{ width: 14, height: 2.5, borderRadius: 2, background: "#f59e0b" }} />
-                Brand "leonori" (asse dx){delay ? " · ritardo 1 sett." : ""}
+                Brand "leonori" (asse dx){delay > 0 ? ` · ritardo ${delay} sett.` : ""}
               </div>
             )}
           </div>

@@ -21,7 +21,6 @@ export function NavBar({ current, onNavigate, unlocked, setUnlocked }: { current
     { key: "budget",         label: "Budget",            icon: "💰" },
     { key: "reach",          label: "Reach",             icon: "📡" },
     { key: "dashboard",      label: "Dashboard",         icon: "🌐" },
-    { key: "crm-merger",     label: "CRM Merger",        icon: "⚙" },
   ];
 
   const handlePinSubmit = async () => {

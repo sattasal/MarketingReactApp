@@ -51,7 +51,7 @@ export default function BudgetPage({ onNavigate, unlocked, setUnlocked }: PagePr
       const key = `${importYear}-${String(importMonth).padStart(2, "0")}`;
       try {
         setLoading(true);
-        await supabase.delete(BUDGET_TABLE, `month_key=eq.${key}`);
+        await supabase.deleteWhere(BUDGET_TABLE, `month_key=eq.${key}`);
         await supabase.insert(BUDGET_TABLE, rows.map(r => ({ ...r, month_key: key })));
         await loadData();
         setOpenMonths(prev => ({ ...prev, [key]: true }));

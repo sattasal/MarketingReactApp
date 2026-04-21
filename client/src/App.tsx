@@ -78,6 +78,7 @@ export default function App() {
       {page === "reach"          && <ReachPage           {...pageProps} />}
       {page === "dashboard"      && <DashboardPage       {...pageProps} />}
       {page === "crm-merger"     && <CrmMergerPage       {...pageProps} />}
+	  {page === "syncro"         && <SyncroPage          {...pageProps} />}
     </>
   );
 }

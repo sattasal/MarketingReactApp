@@ -11,17 +11,18 @@ export function NavBar({ current, onNavigate, unlocked, setUnlocked }: { current
   const [pinChecking, setPinChecking] = useState(false);
 
   const tabs: { key: PageType; label: string; icon: string }[] = [
-    { key: "marketing",      label: "Costi Marketing",  icon: "📊" },
+    { key: "marketing",      label: "Costi Marketing",   icon: "📊" },
     { key: "collettive",     label: "Collettive",        icon: "🤝" },
     { key: "piani-extra",    label: "Piani Extra",       icon: "📌" },
     { key: "ooh",            label: "Campagne OOH",      icon: "🏙" },
     { key: "timeline",       label: "Timeline",          icon: "📅" },
     { key: "creativita",     label: "Creatività",        icon: "🖼" },
-    { key: "lead-contratti", label: "Lead ↔ Contratti", icon: "🔗" },
+    { key: "lead-contratti", label: "Lead ↔ Contratti",  icon: "🔗" },
     { key: "budget",         label: "Budget",            icon: "💰" },
     { key: "reach",          label: "Reach",             icon: "📡" },
     { key: "dashboard",      label: "Dashboard",         icon: "🌐" },
-    { key: "crm-merger",     label: "CRM Merger",        icon: "⚙" },
+    { key: "syncro", 		 label: "Syncro", 			 icon: "🔀" },
+
   ];
 
   const handlePinSubmit = async () => {

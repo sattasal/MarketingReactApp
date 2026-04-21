@@ -9,14 +9,14 @@ import LeadContrattiPage from "./pages/LeadContrattiPage";
 import BudgetPage from "./pages/BudgetPage";
 import ReachPage from "./pages/ReachPage";
 import DashboardPage from "./pages/DashboardPage";
-import CrmMergerPage from "./pages/CrmMergerPage";
+import SyncroPage from "./pages/SyncroPage";
 import { PageType } from "./lib/types";
 
 export default function App() {
   const validPages: PageType[] = [
     "marketing", "collettive", "piani-extra", "ooh", "timeline",
     "creativita", "lead-contratti", "budget", "reach",
-    "dashboard", "crm-merger"
+    "dashboard", "crm-merger", "syncro"
   ];
 
   const getPageFromHash = (): PageType => {

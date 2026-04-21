@@ -21,6 +21,7 @@ export function NavBar({ current, onNavigate, unlocked, setUnlocked }: { current
     { key: "lead-contratti", label: "Lead ↔ Contratti", icon: "🔗" },
     { key: "budget", label: "Budget", icon: "💰" },
     { key: "reach", label: "Reach", icon: "📡" },
+	{ key: "syncro", label: "Syncro", icon: "🔀" },
   ];
 
   const handlePinSubmit = async () => {

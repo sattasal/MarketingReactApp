@@ -584,7 +584,7 @@ export default function SyncroPage({ onNavigate, unlocked, setUnlocked }: PagePr
       end_date: "",
     };
     try {
-      const [created] = await supabase.insert(TABLE_ACT, newAct) as SyncroActivity[];
+      const created = await supabase.insert(TABLE_ACT, newAct) as SyncroActivity;
       setActivities(prev => [...prev, { ...created, tasks: [] }]);
     } catch {
       showToast("Errore creazione attività");

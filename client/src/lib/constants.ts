@@ -5,7 +5,7 @@ export const BUDGET_TABLE = "budget_records";
 export const today = new Date().toISOString().slice(0, 10);
 
 export const TIPOLOGIE = ["Radio", "OOH", "Stampa", "Digital Adv", "Evento", "Sponsor", "Partner", "Servizio", "Altro online", "Altro offline"];
-export const BRANDS = ["Fiat", "Jeep", "Alfa Romeo", "Lancia", "Leapmotor", "Opel", "Peugeot", "Citroen", "DS", "Honda", "Skoda", "BYD", "Dongfeng", "Hurba", "MyUsato", "Post Vendita", "Commerciali", "Vaigo", "Leonori", "Veicoli nuovi"];
+export const BRANDS = ["Fiat", "Jeep", "Alfa Romeo", "Kia", "Lancia", "Leapmotor", "Opel", "Peugeot", "Citroen", "DS", "Honda", "Skoda", "BYD", "Dongfeng", "Hurba", "MyUsato", "Post Vendita", "Commerciali", "Vaigo", "Leonori", "Veicoli nuovi"];
 export const OFFLINE_TYPES = ["Radio", "OOH", "Stampa", "Evento", "Sponsor", "Altro offline"];
 export const ONLINE_TYPES = ["Digital Adv", "Altro online"];
 export const MEDIA_COLORS: Record<string, string> = {
@@ -17,7 +17,7 @@ export const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno
 export const MESI_SHORT = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
 
 export const BRAND_COLORS: Record<string, string> = {
-  "Fiat": "#d32f2f", "Jeep": "#2e7d32", "Alfa Romeo": "#8b0000", "Lancia": "#1565c0",
+  "Fiat": "#d32f2f", "Kia": "ff0000", "Jeep": "#2e7d32", "Alfa Romeo": "#8b0000", "Lancia": "#1565c0",
   "Leapmotor": "#0097a7", "Opel": "#f9a825", "Peugeot": "#1a237e", "Citroen": "#c62828",
   "DS": "#6a1b9a", "Honda": "#e64a19", "Skoda": "#388e3c", "BYD": "#0d47a1",
   "Dongfeng": "#4e342e", "Hurba": "#ff6f00", "MyUsato": "#e65100", "Post Vendita": "#546e7a",
